@@ -81,6 +81,17 @@ export const LOST_FOCUS = 0x1f0;
 export const TURN_LEFT = 0x1e0;
 export const TURN_RIGHT = 0x1e1;
 
+/**
+ * Direct touch (the mobile fork's, ui/directTouch.ts), beyond any key or button. TOUCH: the keys a tap stands for,
+ * typed as they are (Game.touchKeys) - a command's letter and its direction or member, the way 1988's keyboard gave
+ * them - at any prompt that reads the keyboard (input.ts rawKey). TOUCH_PICK: a list's line tapped, Game.touchPick -
+ * chosen at once (menu.ts choose, the title's menu). TOUCH_AT: a square of the view tapped where the crosshair is
+ * up, Game.touchAt - aimed at and loosed (combat.ts aim).
+ */
+export const TOUCH = 0x1f4;
+export const TOUCH_PICK = 0x1f5;
+export const TOUCH_AT = 0x1f6;
+
 /** A member drawn on the map: the figure's tile (an actor's, 0x100 on) and its tint, 0xRRGGBB (0 none). */
 export interface Figure {
   tile: number;

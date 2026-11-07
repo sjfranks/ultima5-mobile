@@ -153,13 +153,19 @@ export async function tipsMenu(g: Game): Promise<void> {
  * (`keys`). Held - the chain waiting, from the first not yet given - with the keyboard read as letters, Snap attacks
  * off or Snap targets off; and the shoulders' with only the touch pad, which has none.
  */
-export const COMBAT_TIPS: { id: string; pad: string; keys: string; shoulders?: boolean }[] = [
-  { id: 'snap-attack', pad: 'Tip: Press X for a snap attack!', keys: 'Tip: Press C for a snap attack!' },
-  { id: 'cast', pad: 'Tip: Press Y to cast a spell!', keys: 'Tip: Press Y to cast a spell!' },
+export const COMBAT_TIPS: { id: string; pad: string; keys: string; touch: string; shoulders?: boolean }[] = [
+  {
+    id: 'snap-attack',
+    pad: 'Tip: Press X for a snap attack!',
+    keys: 'Tip: Press C for a snap attack!',
+    touch: 'Tip: Tap a foe to strike it!',
+  },
+  { id: 'cast', pad: 'Tip: Press Y to cast a spell!', keys: 'Tip: Press Y to cast a spell!', touch: 'Tip: Tap Cast to cast a spell!' },
   {
     id: 'snap-cycle',
     pad: 'Tip: Press LB/RB to cycle snap targets!',
     keys: 'Tip: Press [ or ] to cycle snap targets!',
+    touch: '',
     shoulders: true,
   },
 ];
@@ -171,5 +177,5 @@ export function combatTip(g: Game): string | null {
   const tip = COMBAT_TIPS.find((t) => !g.tipsShown.has(t.id));
   if (!tip || (tip.shoulders && g.lastSource === 'touch')) return null;
   g.tipsShown.add(tip.id);
-  return g.lastSource === 'keyboard' ? tip.keys : tip.pad;
+  return g.lastSource === 'keyboard' ? tip.keys : g.lastSource === 'touch' ? tip.touch : tip.pad;
 }

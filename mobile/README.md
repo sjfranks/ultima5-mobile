@@ -13,8 +13,10 @@ Add to Home Screen.
   the Gamepad API behave as in a browser. The service worker is dropped:
   updates are new APKs, and the saved game stays in the app's storage
   across them.
-- Runs full screen in landscape with the system bars hidden; a swipe from
-  an edge shows them for a moment.
+- Runs full screen either way up (the user's rotation lock is kept) with
+  the system bars hidden; a swipe from an edge shows them for a moment.
+  Held upright, the map fills the width and the party and the log go
+  under it (`web/src/ui/presentation.ts`).
 - Maps the system Back button (and a handheld's Back key) to Escape, which
   opens the game's Pause menu. Sent to the background (Home, or another
   app), the game opens the Pause menu too, so it waits there on return.
@@ -33,8 +35,10 @@ Add to Home Screen.
   release's page in the system's browser (the GameFolder plugin's
   `openUrl`) - to read what changed and download the APK from.
 - Physical controls that Android reports as a gamepad switch the game to
-  controller mode on the first press; a tap on the screen shows the
-  virtual controller instead.
+  controller mode on the first press. On the screen, the finger plays the
+  game directly - tap to walk, talk and fight, tap a menu's line - with a
+  bar of named buttons for the rest (`web/src/ui/directTouch.ts`,
+  `web/src/ui/touchBar.ts`).
 
 The app stays on Capacitor 7, which targets Android API 35, and the Back
 mapping depends on it. `MainActivity.java` catches `KEYCODE_BACK`, which
@@ -42,8 +46,8 @@ Android stops delivering to apps that target API 36 when they run on
 Android 16: Back would leave the app instead of opening the Pause menu.
 Capacitor 8 targets API 36, so moving to it means moving the mapping too,
 to the App plugin's `backButton` listener or an `OnBackPressedCallback`.
-API 36 also ends the landscape lock on screens 600dp and wider, so tablets
-would turn to portrait. The handhelds this app is for are well served by
+(API 36 also ends orientation locks on screens 600dp and wider; this fork
+turns either way already.) The handhelds this app is for are well served by
 Capacitor 7, so it stays until there is a reason to move; the App plugin
 is held to its Capacitor 7 release (`@capacitor/app@^7`) with it.
 

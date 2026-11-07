@@ -22,7 +22,7 @@ import { CF, Game } from './game.ts';
 import { bumpCommand, corpseBlocks, foesAbout, isLoot, NOT_NOW } from './bumpAct.ts';
 import { bumpInto, getChar, getCharYN, getCommandKey, getHours, queueKeys, selectDirection, upOrDown } from './input.ts';
 import { restOutcome, restTimer } from './rest.ts';
-import { K, Pad } from './io.ts';
+import { K, Pad, TOUCH_AT } from './io.ts';
 import { earnedLevel, Status } from './save.ts';
 import { gameDay, passTime } from './time.ts';
 import {
@@ -1488,11 +1488,23 @@ export async function aim(g: Game, i: number, range: number, friend = false): Pr
   // aim, which casts): the border says only what is asked.
   const hint = g.options.input === 'controller' && !autoPlaysTurn(g);
   if (hint) borderTitle(g, 'Aim');
+  g.aimReach = range;
   while (!fire && !cancel) {
     let dx = 0;
     let dy = 0;
     updateFrame(g);
     let k = await getChar(g, undefined, false, false, true);
+    // A square tapped (ui/directTouch.ts): aimed at and loosed, where it is in reach and not the one who aims.
+    if (k === TOUCH_AT) {
+      const at = g.touchAt;
+      g.touchAt = null;
+      if (!at || at.x < 0 || at.y < 0 || at.x > 0xa || at.y > 0xa) continue;
+      if (distance(at.x, at.y, g.combat[i].x, g.combat[i].y) > range) continue;
+      if (at.x === g.combat[i].x && at.y === g.combat[i].y) continue;
+      s.crossX = at.x;
+      s.crossY = at.y;
+      k = K.Enter;
+    }
     // The button that began it looses it, as A does: X an attack's blow, Y a spell's (and neither the other's).
     if (k === (g.casting ? Pad.Y : Pad.X)) k = K.Enter;
     // The shoulders: the next target, or the one before (the port's).
@@ -1551,6 +1563,7 @@ export async function aim(g: Game, i: number, range: number, friend = false): Pr
     }
   }
   s.crosshair = 0;
+  g.aimReach = 0;
   if (hint) clearBorderTitle(g);
   if (cancel) {
     g.printChar('\n');

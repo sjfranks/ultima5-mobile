@@ -221,7 +221,30 @@ export class Game {
     at: number;
     /** 2 for a list in two columns (menu.ts chooseTwoColumns), read across; else one. */
     columns?: number;
+    /** What it is, for the touch bar (ui/touchBar.ts): a list (the default), or a number dialled (menu.ts amount). */
+    kind?: 'list' | 'dial';
+    /** Where each line shown lies, in EGA pixels (x1, y1, x2, y2, inclusive), and which it is: a tap picks it. */
+    rows?: { i: number; r: [number, number, number, number] }[];
+    /** The box it is drawn in, in EGA pixels: a tap outside it backs out. */
+    box?: [number, number, number, number];
+    /** Whether there is more of it above or below what shows: a swipe scrolls it. */
+    more?: { above: boolean; below: boolean };
   } | null = null;
+  /** The keys a tap stands for (io.ts TOUCH), typed at the next prompt that reads the keyboard. */
+  touchKeys: number[] = [];
+  /** The line a tap picked (io.ts TOUCH_PICK); `touchPickGo`, chosen (the finger lifted on it) rather than only barred. */
+  touchPick = -1;
+  touchPickGo = false;
+  /** The square a tap aimed at (io.ts TOUCH_AT), in the view's squares. */
+  touchAt: { x: number; y: number } | null = null;
+  /** The title's menu while it is up (intro.ts menu): where each line lies, in EGA pixels, for a tap. */
+  titleRows: { i: number; r: [number, number, number, number] }[] | null = null;
+  /** A way is being asked (input.ts selectDirection) - 'here' where the square of whoever acts answers it too. */
+  askingWay: '' | 'way' | 'here' = '';
+  /** A member is being chosen (input.ts selectMember): a tap on their line in the panel picks them. */
+  choosingMember = false;
+  /** The crosshair's reach while it is up (combat.ts aim): a tap beyond it is not aimed at. */
+  aimReach = 0;
   /** The journal: clues heard, kept with the saved game. */
   notes: Note[] = [];
   /** Whether a game is in play, rather than the title up (run.ts journeyOnward): what Export takes (transfer.ts). */

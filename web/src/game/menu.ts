@@ -18,7 +18,7 @@ import { drawTextCard } from './shopCard.ts';
 import { CF, Game } from './game.ts';
 import { menuKey, PAUSED } from './input.ts';
 import { besideHarpsichord } from './harpsichord.ts';
-import { HARPSICHORD, K, Pad, SAVE_NOW } from './io.ts';
+import { HARPSICHORD, K, Pad, SAVE_NOW, TOUCH_PICK } from './io.ts';
 import { somethingBeside } from './items.ts';
 import { itemCounts, nextHeld, unloaded } from './zstats.ts';
 import { holdFullPanel } from './layout.ts';
@@ -490,7 +490,7 @@ export async function amount(
     put(g, 0, 2, `${String.fromCharCode(0x18)}${String.fromCharCode(0x19)} ${label(n).padStart(width)}`.padEnd(cols));
     const said = caption?.(n).split('\n');
     for (let r = 0; r < tallest; r++) put(g, 0, 3 + r, (said?.[r] ?? '').padEnd(cols));
-    g.menuShown = { title, labels: [label(n), ...(said ?? [])], enabled: [true], dim: [false], at: 0 };
+    g.menuShown = { title, labels: [label(n), ...(said ?? [])], enabled: [true], dim: [false], at: 0, kind: 'dial', box: boxRect(g) };
     const k = await key(g);
     if (k === PAUSED) {
       frame();
@@ -701,6 +701,36 @@ function scrollMarks(g: Game, rows: number, above: boolean, below: boolean): voi
 /** What choose returns where the opener's key hook (Game.choiceKey) left the list, to show something over it. */
 export const LEFT_FOR_HOOK = -3;
 
+/**
+ * The box the menus' window is drawn in now, in EGA pixels: a box's frame (Draw.chromeBox's, or a title dialog's), else
+ * the window itself half a character out - the map's square for a panel.
+ */
+function boxRect(g: Game): [number, number, number, number] {
+  const w = g.text.windows[WIN];
+  return [w.left * 8 - 4, w.top * 8 - 4, (w.right + 1) * 8 + 3, (w.bottom + 1) * 8 + 3];
+}
+
+/**
+ * Where a list's lines lie on the screen (EGA pixels), for a tap (ui/directTouch.ts): `rows` shown from line `top` of
+ * `count`, under `head` rows of title, each `width` characters wide; and its box, and whether more lies beyond it.
+ */
+function listGeometry(
+  g: Game,
+  rows: number,
+  top: number,
+  count: number,
+  head: number,
+  width: number,
+): Pick<NonNullable<Game['menuShown']>, 'rows' | 'box' | 'more'> {
+  const w = g.text.windows[WIN];
+  const out: { i: number; r: [number, number, number, number] }[] = [];
+  for (let r = 0; r < rows && top + r < count; r++) {
+    const y = (w.top + head + r) * 8;
+    out.push({ i: top + r, r: [w.left * 8, y, (w.left + width) * 8 - 1, y + 7] });
+  }
+  return { rows: out, box: boxRect(g), more: { above: top > 0, below: top + rows < count } };
+}
+
 export async function choose(g: Game, title: string, items: Item[], start = 0, boxed = false, talkRows?: TalkRows): Promise<number> {
   // What was said for the Dialog setting's box shown first: the box drawn before the menu, not over it - and a list
   // low in the view, as a townsman's talk has it, the merchant's words in sight above it (merchantSpeech.ts).
@@ -768,6 +798,9 @@ export async function choose(g: Game, title: string, items: Item[], start = 0, b
   let hooked: boolean | 'leave';
   for (;;) {
     draw();
+    // Where its lines lie, for a tap (ui/directTouch.ts): read before choiceWatch draws anything of its own.
+    const head = (boxed && !title) || talking ? 0 : 2;
+    const geometry = listGeometry(g, rows, top, items.length, head, talking && items.length > rows ? cols - 2 : cols);
     if (g.choiceWatch) {
       const here = t.current;
       g.choiceWatch(at, title);
@@ -779,6 +812,7 @@ export async function choose(g: Game, title: string, items: Item[], start = 0, b
       enabled: items.map((it) => it.enabled !== false),
       dim: items.map((it) => it.dim === true),
       at,
+      ...geometry,
     };
     // (A talk's menu leaves the map going on round it: the townsman and the party, the water.)
     const k = await menuKey(g, boxed ? items.flatMap((it) => (it.key ? [it.key] : [])) : [], animate);
@@ -816,7 +850,21 @@ export async function choose(g: Game, title: string, items: Item[], start = 0, b
       return next >= 0 && next < items.length ? next : at;
     };
     const long = items.length > rows;
-    if (k === K.Left && long) {
+    if (k === TOUCH_PICK) {
+      // A line tapped (ui/directTouch.ts): the bar on it while the finger is down, chosen as it lifts there.
+      const i = g.touchPick;
+      if (i < 0 || i >= items.length) continue;
+      const restable = items[i].enabled !== false || items[i].rest === true;
+      if (restable && i !== at) {
+        at = i;
+        menuSound(g, 'move');
+      }
+      if (g.touchPickGo && items[i].enabled !== false) {
+        at = i;
+        result = i;
+        break;
+      }
+    } else if (k === K.Left && long) {
       at = page(-1);
       menuSound(g, 'move');
     } else if (k === K.Right && long) {
@@ -898,6 +946,14 @@ export async function chooseTwoColumns(g: Game, title: string, items: Item[], st
       const right = items[2 * r + 1];
       if (right) cell(cols - right.label.length, r, 2 * r + 1, at === 2 * r + 1);
     }
+    // Where its lines lie, for a tap (ui/directTouch.ts): each half of a row its own line.
+    const w = t.windows[WIN];
+    const half = (cols * 8) >> 1;
+    const twoRows: { i: number; r: [number, number, number, number] }[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const [x1, y1] = [w.left * 8 + (i & 1 ? half : 0), (w.top + (i >> 1)) * 8];
+      twoRows.push({ i, r: [x1, y1, x1 + half - 1, y1 + 7] });
+    }
     g.menuShown = {
       title,
       labels: items.map((it) => it.label),
@@ -905,13 +961,24 @@ export async function chooseTwoColumns(g: Game, title: string, items: Item[], st
       dim: items.map((it) => it.dim === true),
       at,
       columns: 2,
+      rows: twoRows,
+      box: boxRect(g),
     };
     const k = await menuKey(g);
     if (k === PAUSED) {
       frame(); // the Pause menu was over it
       continue;
     }
-    if (k === K.Up || k === K.Down) {
+    if (k === TOUCH_PICK) {
+      const i = g.touchPick;
+      if (i < 0 || i >= items.length) continue;
+      if (i !== at) menuSound(g, 'move');
+      at = i;
+      if (g.touchPickGo && items[i].enabled !== false) {
+        result = i;
+        break;
+      }
+    } else if (k === K.Up || k === K.Down) {
       // A row up or down in the same column, wrapping (the last row's right may be empty: its left then).
       const by = k === K.Up ? -2 : 2;
       let next = at + by;

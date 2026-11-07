@@ -11,7 +11,7 @@ import { treasureLies } from './actors.ts';
 import { autoTitle, clearBorderTitle, borderTitle, drawVitals, invertMember, markTurn, updateFrame } from './frame.ts';
 import { liftDungeonMap } from './dungeonMap.ts';
 import { Game } from './game.ts';
-import { K, LOST_FOCUS, Pad, TURN_LEFT, TURN_RIGHT } from './io.ts';
+import { K, LOST_FOCUS, Pad, TOUCH, TOUCH_AT, TURN_LEFT, TURN_RIGHT } from './io.ts';
 import { Status } from './save.ts';
 import { warmAhead } from './world.ts';
 
@@ -191,6 +191,15 @@ async function rawKey(g: Game, idle?: () => void, literal = false, command = fal
         if (command) warmAhead(g);
       })
       .finally(() => (g.awaitingCommand = false));
+    // A tap's keys (io.ts TOUCH, ui/directTouch.ts): typed as they are, a command's letter and what it asks after.
+    if (key === TOUCH) {
+      const keys = g.touchKeys.splice(0);
+      if (keys.length === 0) continue;
+      typed.push(...keys.slice(1));
+      cursor(0x20);
+      g.saidSince = '';
+      return keys[0];
+    }
     // A lost focus is for the command prompt alone (io.ts LOST_FOCUS); anywhere else it passes.
     if (key === LOST_FOCUS && !command) continue;
     // The right stick's turns likewise (io.ts TURN_LEFT): a flick of it answers no other question.
@@ -360,6 +369,7 @@ export async function getChar(g: Game, idle?: () => void, literal = false, lette
         return Pad.X;
       case Pad.LB:
       case Pad.RB:
+      case TOUCH_AT: // a square tapped where the crosshair is up (combat.ts aim)
         if (shoulders) return k;
         break;
       case Pad.Y: {
@@ -499,7 +509,7 @@ export async function getCommandKey(g: Game, where: Game['commandPrompt'], idle?
  * Whether the attack here is the guns: aboard a frigate out in Britannia (its broadside), or beside one of a
  * castle's cannons (cmds.ts fireCommand).
  */
-function firesHere(g: Game): boolean {
+export function firesHere(g: Game): boolean {
   const s = g.s;
   if (s.mapId === 0) return s.partyTile >= 0x20 && s.partyTile <= 0x27;
   if (s.mapId > 0x20 || g.inDungeon) return false;
@@ -580,10 +590,24 @@ export async function selectDirection(g: Game, here = false): Promise<boolean> {
     // Which way is asked where Select: is, on the border, for a player who was not told the d-pad answers it.
     const hint = g.options.input === 'controller' && typed.length === 0;
     if (hint) borderTitle(g, hereToo ? 'Way, or here?' : 'Which way?');
-    await directing(g, async () => {
-      do k = await getChar(g);
-      while (k !== K.Space && k !== K.Escape && k !== K.Up && k !== K.Down && k !== K.Left && k !== K.Right && !(hereToo && k === K.Enter));
-    });
+    // A tap answers it too (ui/directTouch.ts): the way from whoever acts to the square tapped, or their own.
+    g.askingWay = hereToo ? 'here' : 'way';
+    try {
+      await directing(g, async () => {
+        do k = await getChar(g);
+        while (
+          k !== K.Space &&
+          k !== K.Escape &&
+          k !== K.Up &&
+          k !== K.Down &&
+          k !== K.Left &&
+          k !== K.Right &&
+          !(hereToo && k === K.Enter)
+        );
+      });
+    } finally {
+      g.askingWay = '';
+    }
     if (hint) clearBorderTitle(g);
   }
   switch (k) {
@@ -771,6 +795,8 @@ export async function selectMember(
   };
   let sel = start !== undefined && can(start) ? start : can(0) ? 0 : step(0, 1);
   let shown = -1;
+  // A tap on a member's line in the panel picks them (ui/directTouch.ts): their digit, and Enter.
+  g.choosingMember = true;
   // The choice's bar: the Standard look draws the line again as one bar (frame.ts memberLine), as it marks a turn,
   // where turning its colours over would turn a name's or its mana's to their opposites; the EGA look inverts it.
   const bar = (m: number, on: boolean): void => {
@@ -823,6 +849,7 @@ export async function selectMember(
     }
     if (shown !== sel) bar(shown, false);
   } while (!done);
+  g.choosingMember = false;
   if (sel > -1) bar(sel, false);
   // The Standard look marks the turn's member again (the EGA game's inversion left it for the turn's end to turn).
   if (turn >= 0 && g.options.tileSet === 'standard') markTurn(g, turn, true);

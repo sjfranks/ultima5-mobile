@@ -12,7 +12,7 @@ import { addressedAsLady, type Appearance, FIGURES, HAIR, HUES, randomAppearance
 import type { Game } from './game.ts';
 import { asPad } from './input.ts';
 import { drawScene, SCENE_MAP, titleBanner, VIEW_SCENE } from './intro.ts';
-import { K, Pad } from './io.ts';
+import { K, Pad, TOUCH_PICK } from './io.ts';
 import { box, framedBox, menuSound } from './menu.ts';
 import { T } from './tiles.ts';
 import { groundAmong, isGround } from './world.ts';
@@ -189,12 +189,18 @@ export async function chooseAppearance(
   const draw = (): void => {
     for (let r = 0; r < rows.count; r++) put(r);
     // What the menu shows, for whoever watches the screen's menus (as choose gives it).
+    // Where each line lies, for a tap (ui/directTouch.ts): the line barred, and pressed as the finger lifts on it.
+    const w = t.windows[t.current];
     g.menuShown = {
       title,
       labels: Array.from({ length: rows.count }, (_, r) => rowText(look, r, copyNote, rows).trim()),
       enabled: Array<boolean>(rows.count).fill(true),
       dim: Array<boolean>(rows.count).fill(false),
       at,
+      rows: Array.from({ length: rows.count }, (_, r) => {
+        const y = (w.top + r + 2) * 8;
+        return { i: r, r: [w.left * 8, y, (w.right + 1) * 8 - 1, y + 7] as [number, number, number, number] };
+      }),
     };
   };
   const changed = (): void => {
@@ -234,7 +240,14 @@ export async function chooseAppearance(
   try {
     for (;;) {
       draw();
-      const k = asPad(g, await g.p.waitKey(idle));
+      let k = asPad(g, await g.p.waitKey(idle));
+      if (k === TOUCH_PICK) {
+        if (g.touchPick >= 0 && g.touchPick < rows.count && g.touchPick !== at) {
+          at = g.touchPick;
+          menuSound(g, 'move');
+        }
+        k = g.touchPickGo ? Pad.A : 0;
+      }
       copyNote = COPY_LABEL;
       if (k === K.Up || k === K.Down) {
         at = (at + (k === K.Up ? rows.count - 1 : 1)) % rows.count;

@@ -191,7 +191,12 @@ function bootScreen(canvas: HTMLCanvasElement): Promise<() => Promise<void>> {
     if (!ctx) return;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(art, 0, 0, canvas.width, canvas.height);
+    // Fitted whole and centred (the canvas is the whole window: index.html), the painting at its own shape.
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const s = Math.min(canvas.width / art.naturalWidth, canvas.height / art.naturalHeight);
+    const [dw, dh] = [art.naturalWidth * s, art.naturalHeight * s];
+    ctx.drawImage(art, (canvas.width - dw) / 2, (canvas.height - dh) / 2, dw, dh);
     bootShown = true;
     shownAt ||= performance.now();
   };

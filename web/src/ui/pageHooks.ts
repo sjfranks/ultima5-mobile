@@ -14,32 +14,14 @@ import { effectsOf, saveOptions, soundtrackOf, type Options } from '../game/sett
 import { clearInstalled } from '../install/store.ts';
 import { GamepadInput } from './gamepad.ts';
 import type { CapacitorLike } from './platform.ts';
-import { mapKey, showMap } from './mapView.ts';
+import { mapKey, mapShowing, showMap } from './mapView.ts';
 import { menuUp } from './pageMenu.ts';
 import { ScanlineOverlay } from './scanlines.ts';
 import { addressedAsLady } from '../game/appearance.ts';
 import type { Screen } from './screen.ts';
 import type { PcSound } from './sound.ts';
-import { fullScreen } from './fullScreen.ts';
-import { TouchPad } from './touch.ts';
-
-const PAD_KEY = 'ultima5.touchpad';
-
-function remember(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    /* storage refused */
-  }
-}
-
-function recall(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
+import { DirectTouch } from './directTouch.ts';
+import { TouchBar } from './touchBar.ts';
 
 /**
  * The page's own box, while one is up (a line of text, a dialog): a controller's A and B answer it - OK and Cancel -
@@ -302,7 +284,7 @@ export function installPageHooks(g: Game, screen: Screen, canvas: HTMLCanvasElem
   };
   const gamepad = new GamepadInput(
     (code, held) => {
-      touch.show(false);
+      bar.enabled = false;
       from('gamepad');
       send(code, held);
     },
@@ -310,14 +292,10 @@ export function installPageHooks(g: Game, screen: Screen, canvas: HTMLCanvasElem
     screen.holds,
   );
   wakeInput = () => gamepad.wake();
-  const touch = new TouchPad({
-    send,
-    holds: screen.holds,
-    onPress: () => from('touch'),
-    onToggle: (shown) => remember(PAD_KEY, shown ? '1' : '0'),
-    shown: recall(PAD_KEY) === '1',
-    fullScreen: fullScreen(),
-  });
+  // Touch, direct (the mobile fork's): the finger on the map, the menus and the panel (directTouch.ts), and the
+  // touch bar for the rest (touchBar.ts) - in place of the virtual controller (touch.ts), which is not put up.
+  new DirectTouch(g, screen, { send, onPress: () => from('touch') });
+  const bar = new TouchBar(g, screen, { send, onPress: () => from('touch'), mapShown: mapShowing });
   g.hooks = {
     applyOptions: apply,
     transfer: {

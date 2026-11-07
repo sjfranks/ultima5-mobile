@@ -23,9 +23,12 @@ import { driveMenu, usable } from '../ui/pageMenu.ts';
 export const GOG = 'https://www.gog.com/en/game/ultima_456';
 
 const STYLE = `
-.u5-install { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-  background: #000; color: #aaa; font: 16px/1.5 ui-monospace, Menlo, Consolas, monospace; padding: 16px; box-sizing: border-box; z-index: 10; }
-.u5-install .box { max-width: 640px; width: 100%; border: 2px solid #55f; padding: 24px; box-sizing: border-box; }
+.u5-install { position: fixed; inset: 0; display: flex; justify-content: center; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  touch-action: pan-y; background: #000; color: #aaa; font: 16px/1.5 ui-monospace, Menlo, Consolas, monospace;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom))
+  max(16px, env(safe-area-inset-left)); box-sizing: border-box; z-index: 10; }
+.u5-install .box { max-width: 640px; width: 100%; margin: auto; border: 2px solid #55f; padding: 24px; box-sizing: border-box; }
+@media (max-width: 480px) { .u5-install .box { padding: 16px; } .u5-install { font-size: 15px; } }
 .u5-install h1 { color: #fff; font-size: 22px; margin: 0 0 12px; letter-spacing: 1px; }
 .u5-install p { margin: 0 0 12px; }
 .u5-install a { color: #5ff; }

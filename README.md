@@ -16,6 +16,43 @@ the Apple ][ tile set, and the box's painting, for the key art.
 
 ![The two looks and their tile sets - Modern with Modern PC, Apple ][ or PC EGA tiles, PC 1988 with PC EGA or Apple ][ - each in the world, a town, combat and a dungeon, and for the Modern look the dungeon's whole-level map](promo/looks.jpg)
 
+## This fork: built for a phone
+
+This fork plays the same engine on a phone held either way up, with the
+finger on the game itself rather than a drawn controller.
+
+- **Upright**, the map's square fills the width of the screen, frame,
+  moons and date and all; the party's panel and the log go under it, side
+  by side on a shorter phone, one over the other (with larger letters) on
+  a taller one. Away from play - the title, the story, a picture - and on a
+  phone held sideways, the screen is shown whole.
+- **Tap to walk and act.** A tap on a square beside the party steps there,
+  or does what walking into it does: opens the door, talks to the
+  townsman, strikes the foe, searches the chest. A tap further off walks
+  there by the shortest way, square by square, and walks into whatever was
+  tapped at the end (a townsman who wanders is followed). Hold a finger
+  down to walk the way it points. Tap the party for what there is to do
+  here.
+- **Fights**: tap a foe your weapon reaches to strike or shoot it, or any
+  square to step toward it; where a crosshair is up, tap what to aim at.
+- **Dungeons**: tap the view's left or right third to turn, its middle to
+  step ahead, its foot to step back.
+- **Menus**: tap a line to choose it (the bar follows the finger, and the
+  line is chosen as it lifts); swipe a long list for a page; tap outside a
+  box to back out. Drag up and down on a number to dial it. Where a member
+  is asked for, tap their line in the panel; where a way is asked, tap the
+  square.
+- **The touch bar** below holds the rest, named for what each does where
+  you are: Act, Cast, Attack, Pass and the Pause menu at the prompt; the
+  dial's steps; the aim's next target and Fire.
+
+The code is in `web/src/ui/presentation.ts` (where the screen goes),
+`web/src/ui/directTouch.ts` (what a tap means) and
+`web/src/ui/touchBar.ts` (the bar). A keyboard or gamepad still works as
+upstream, and puts the bar away until the next touch.
+
+- [This fork: built for a phone](#this-fork-built-for-a-phone) Portrait
+  play and touch.
 - [Installation](#installation) The browser, the Steam Deck, Windows,
   macOS, Linux and Android.
 - [New to Ultima V?](#new-to-ultima-v) Get it running and find your feet.

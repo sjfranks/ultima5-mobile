@@ -4,8 +4,8 @@
 # release's game as the apps are. Started by hand (Actions > Deploy to
 # GitHub Pages > Run workflow) it deploys the release branch, or the
 # commit or branch given.
-# The site is served at https://<owner>.github.io/ultima5/, so Vite is told
-# to prefix asset URLs with /ultima5/. The site also serves the newest
+# The site is served at https://<owner>.github.io/<repository>/, so Vite is told
+# to prefix asset URLs with /<repository>/. The site also serves the newest
 # release's Flatpak as a signed repository under /flatpak/ (see
 # desktop/flatpak-repo.sh), brought up to the newest release by the
 # deploy that follows each one.
@@ -75,7 +75,8 @@ jobs:
       # The build's mark: the commit built (not main's, where the workflow runs).
       - run: VITE_BUILD="$(git rev-parse --short=7 HEAD)" npm run build
         env:
-          VITE_BASE: /ultima5/
+          # The repository's own name: /ultima5/ for the original, /ultima5-mobile/ for this fork.
+          VITE_BASE: /${{ github.event.repository.name }}/
       # The Flatpak repository: the newest release's bundle, imported into a fresh OSTree repository and signed. A
       # pruned repository holds one commit anyway, so nothing needs keeping between deploys. flatpak and ostree come from
       # the cache kept per runner image, else the mirror, its stale package lists (a superseded version 404s) refreshed

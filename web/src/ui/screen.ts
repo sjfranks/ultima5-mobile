@@ -42,7 +42,21 @@ import type { Tiles } from '../game/settings.ts';
 import type { StandardArt } from './standardArt.ts';
 import { setChoice, setProse, setSteps, type Measure, type Run, type RunFace } from './storyText.ts';
 import { Text, type TextTarget } from './text.ts';
-import { NO_INSETS, present, toCanvas, toScreen, type Insets, type Part, type Presentation, type Rect } from './presentation.ts';
+import { NO_INSETS, present, toCanvas, toScreen, type Blit, type Insets, type Part, type Presentation, type Rect } from './presentation.ts';
+import type { WayShown } from './directTouch.ts';
+
+/** A tapped way's marks (drawWay): the dots, their dark rim, and the end's bracket by what happens there. */
+const WAY_DOT = '#fff1cc';
+const WAY_RIM = 'rgba(14, 8, 2, 0.7)';
+const WAY_COLOURS: Record<WayShown['kind'], string> = {
+  walk: '#ffe08a',
+  into: '#ffe08a',
+  talk: '#8fd8ff',
+  foe: '#ff6a52',
+  none: '#9c968c',
+};
+/** A square of the view, in EGA pixels. */
+const TILE = 16;
 
 /** The DOS timer's tick; the game animated about once per tick while waiting for a key. */
 export const TICK_MS = 1000 / 18.2;
@@ -493,6 +507,74 @@ export class Screen implements Platform {
   /** Whether frames are asked for only when there is something to show (Battery saver: pageHooks.ts), not at every refresh. */
   lazyFrames: () => boolean = () => false;
 
+  /** The way a tap will walk, or is walking, to be marked over the map (directTouch.ts); null for none. */
+  wayShown: (() => WayShown | null) | null = null;
+
+  /**
+   * A tapped way over the map, at the display's size, cut to the map's square: a dot on each square it steps onto (the
+   * first, the step to be taken next, the larger), and the square it ends on bracketed in the colour of what happens
+   * there - walked to, someone talked to, a foe fought, something walked into; grey and crossed where there is no way.
+   * `lag`: the map's glide behind where it is going (viewGlide.ts), which the marks keep to.
+   */
+  private drawWay(ctx: CanvasRenderingContext2D, b: Blit, way: WayShown, lag: { x: number; y: number }): void {
+    const f = b.dw / b.sw;
+    const X = (ex: number): number => b.dx + (ex - b.sx) * f;
+    const Y = (ey: number): number => b.dy + (ey - b.sy) * f;
+    const sq = TILE * f;
+    const at = (p: { x: number; y: number }): [number, number] => [X(TILE_X + (p.x - lag.x) * TILE), Y(TILE_Y + (p.y - lag.y) * TILE)];
+    const rim = Math.max(1, sq * 0.035);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.rect(X(TILE_X), Y(TILE_Y), 11 * sq, 11 * sq);
+    ctx.clip();
+    way.steps.forEach((p, i) => {
+      const [x, y] = at(p);
+      const r = sq * (i === 0 ? 0.125 : 0.09);
+      ctx.beginPath();
+      ctx.arc(x + sq / 2, y + sq / 2, r + rim, 0, Math.PI * 2);
+      ctx.fillStyle = WAY_RIM;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x + sq / 2, y + sq / 2, r, 0, Math.PI * 2);
+      ctx.fillStyle = WAY_DOT;
+      ctx.fill();
+    });
+    const [x, y] = at(way.end);
+    const inset = sq * 0.07;
+    const len = sq * 0.3;
+    const [x1, y1, x2, y2] = [x + inset, y + inset, x + sq - inset, y + sq - inset];
+    const corners = new Path2D();
+    for (const [cx, cy, dx, dy] of [
+      [x1, y1, 1, 1],
+      [x2, y1, -1, 1],
+      [x2, y2, -1, -1],
+      [x1, y2, 1, -1],
+    ] as const) {
+      corners.moveTo(cx + dx * len, cy);
+      corners.lineTo(cx, cy);
+      corners.lineTo(cx, cy + dy * len);
+    }
+    if (way.kind === 'none') {
+      const m = sq * 0.32;
+      corners.moveTo(x + m, y + m);
+      corners.lineTo(x + sq - m, y + sq - m);
+      corners.moveTo(x + sq - m, y + m);
+      corners.lineTo(x + m, y + sq - m);
+    }
+    const w = Math.max(2, sq * 0.08);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = WAY_RIM;
+    ctx.lineWidth = w + 2 * rim;
+    ctx.stroke(corners);
+    ctx.strokeStyle = WAY_COLOURS[way.kind];
+    ctx.lineWidth = w;
+    ctx.stroke(corners);
+    ctx.restore();
+  }
+
   /** Whether the game is waiting for a key now (a tap is read for what it waits on: directTouch.ts). */
   get waiting(): boolean {
     return this.waiter !== null;
@@ -628,6 +710,9 @@ export class Screen implements Platform {
     }
     // The harpsichord's keyboard, through the blit that shows the map (or the whole screen).
     const over = p.blits.find((b) => b.part === 'view' || b.part === 'screen');
+    // A tapped way (directTouch.ts), over the map, under anything the game puts up over it.
+    const way = this.wayShown?.() ?? null;
+    if (way && over) this.drawWay(ctx, over, way, this.smoothMotion() ? this.viewGlide.cameraLag(performance.now()) : { x: 0, y: 0 });
     if (this.harp && over) {
       const f = over.dw / over.sw;
       this.drawHarp(ctx, [f, f, over.dx - over.sx * f, over.dy - over.sy * f], this.harp, performance.now());

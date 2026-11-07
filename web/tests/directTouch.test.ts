@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { arrowToward, firstStep, touchMode } from '../src/ui/directTouch.ts';
+import { arrowToward, firstStep, touchMode, wayTo } from '../src/ui/directTouch.ts';
 import { atOf, K, pickOf, touchAt, touchPick } from '../src/game/io.ts';
 import type { Game } from '../src/game/game.ts';
 
@@ -72,6 +72,36 @@ describe('direct touch', () => {
       '...........',
     ]);
     expect(firstStep(9, 9, open)).toBe(0);
+  });
+
+  it('gives the whole way to mark: each square stepped onto, ending on the one tapped', () => {
+    const open = grid([
+      '...........',
+      '...........',
+      '...........',
+      '...........',
+      '...........',
+      '.......#...',
+      '...........',
+      '...........',
+      '...........',
+      '...........',
+      '...........',
+    ]);
+    // Two squares east, someone standing there: one step, then into them.
+    expect(wayTo(7, 5, open)).toEqual([
+      { x: 6, y: 5 },
+      { x: 7, y: 5 },
+    ]);
+    // Three north: as many squares, each beside the last.
+    const way = wayTo(5, 2, open);
+    expect(way).toHaveLength(3);
+    expect(way.at(-1)).toEqual({ x: 5, y: 2 });
+    way.forEach((p, i) => {
+      const from = i === 0 ? { x: 5, y: 5 } : way[i - 1];
+      expect(Math.abs(p.x - from.x) + Math.abs(p.y - from.y)).toBe(1);
+    });
+    expect(wayTo(5, 5, open)).toEqual([]);
   });
 
   it('plans from any square (a fight, from whoever acts)', () => {

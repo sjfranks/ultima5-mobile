@@ -133,6 +133,16 @@ export class ViewGlide {
     return this.glide.moving(now);
   }
 
+  /**
+   * How far the map is behind where it is going at `now`, in squares (the camera's lag): what is drawn over a square of
+   * the map, a tapped way's marks (screen.ts drawWay), is drawn so much behind with it. Nothing, at rest or in a fight.
+   */
+  cameraLag(now: number): Point {
+    const shot = this.glided;
+    if (!shot?.view.origin || !this.glide.moving(now)) return STILL;
+    return this.glide.lag('camera', now);
+  }
+
   /** The view glided at `now`, over `out` (a colour page's worth, as the screen shows it). */
   paint(now: number, out: Uint32Array): void {
     const shot = this.glided;

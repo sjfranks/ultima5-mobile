@@ -25,6 +25,7 @@ import { canEnter } from '../game/actors.ts';
 import { arenaFree, combatantAt, onMonsterSide, snapTargets } from '../game/combat.ts';
 import { byCompass } from '../game/dungeonMap.ts';
 import { CF, type Game } from '../game/game.ts';
+import { npcOfActor } from '../game/town.ts';
 import { K, Pad, TOUCH, touchAt, touchPick } from '../game/io.ts';
 import type { Screen } from './screen.ts';
 import { cancelsTouch } from './touch.ts';
@@ -35,8 +36,11 @@ const SQUARE = 16;
 const ACROSS = 11;
 const MIDDLE = 5;
 
-/** How long a finger stays down on the map before it walks the way it points (ms), and how far it moves first (CSS px). */
-const HOLD_MS = 230;
+/**
+ * How long a finger stays down on the map, still, before it walks the way it points (ms); and how far it moves to be a
+ * drag (CSS px), which chooses where a tap goes instead, the way marked as it moves.
+ */
+const HOLD_MS = 450;
 const DRAG_PX = 14;
 /** A swipe: this far (CSS px) in this long (ms), mostly up or down. */
 const SWIPE_PX = 30;
@@ -80,45 +84,69 @@ const STEPS: [number, number, number][] = [
 ];
 
 /**
- * The first step of the shortest way across the view from (fx, fy) - its middle - to (tx, ty) (view squares), through the squares
- * `open` lets the party onto - the square itself where it is open, else beside it, to walk into it from there.
- * 0 where there is none.
+ * The shortest way across the view from (fx, fy) - its middle, the party's square - to (tx, ty) (view squares),
+ * through the squares `open` lets the party onto: each square stepped onto, the first first, ending on (tx, ty) - which,
+ * where it cannot be stood on (a townsman, a door, a foe), is walked into from beside it. Empty where there is none.
  */
-export function firstStep(tx: number, ty: number, open: (x: number, y: number) => boolean, fx = MIDDLE, fy = MIDDLE): number {
+export function wayTo(
+  tx: number,
+  ty: number,
+  open: (x: number, y: number) => boolean,
+  fx = MIDDLE,
+  fy = MIDDLE,
+): { x: number; y: number }[] {
   const start = fy * ACROSS + fx;
   const goal = ty * ACROSS + tx;
-  if (goal === start) return 0;
+  if (goal === start || tx < 0 || ty < 0 || tx >= ACROSS || ty >= ACROSS) return [];
   const from = new Int16Array(ACROSS * ACROSS).fill(-1);
-  const first = new Int16Array(ACROSS * ACROSS).fill(0);
   from[start] = start;
   const queue = [start];
-  const reached = (at: number): boolean => {
-    if (at === goal) return true;
-    // Beside the goal, where the goal itself cannot be stood on: walked into from here.
-    const [x, y] = [at % ACROSS, Math.floor(at / ACROSS)];
-    return !open(tx, ty) && Math.abs(x - tx) + Math.abs(y - ty) === 1;
+  const back = (at: number): { x: number; y: number }[] => {
+    const out: { x: number; y: number }[] = [];
+    for (let i = at; i !== start; i = from[i]) out.unshift({ x: i % ACROSS, y: Math.floor(i / ACROSS) });
+    return out;
   };
   for (let q = queue.shift(); q !== undefined; q = queue.shift()) {
     const [x, y] = [q % ACROSS, Math.floor(q / ACROSS)];
-    for (const [sx, sy, key] of STEPS) {
+    for (const [sx, sy] of STEPS) {
       const [nx, ny] = [x + sx, y + sy];
       if (nx < 0 || ny < 0 || nx >= ACROSS || ny >= ACROSS) continue;
       const at = ny * ACROSS + nx;
       if (from[at] >= 0) continue;
-      const isGoal = at === goal;
-      if (!isGoal && !open(nx, ny)) continue;
+      // The goal is reached from any square beside it, open or not; nothing else is stepped onto but open ground.
+      if (at !== goal && !open(nx, ny)) continue;
       from[at] = q;
-      first[at] = q === start ? key : first[q];
-      // Arrived beside a goal it cannot stand on: the step into it is the rest of the way.
-      if (isGoal) return first[at];
-      if (reached(at)) {
-        return first[at];
-      }
+      if (at === goal) return back(at);
       queue.push(at);
     }
   }
-  return 0;
+  return [];
 }
+
+/** The first step of wayTo's way, as an arrow; 0 where there is none. */
+export function firstStep(tx: number, ty: number, open: (x: number, y: number) => boolean, fx = MIDDLE, fy = MIDDLE): number {
+  const way = wayTo(tx, ty, open, fx, fy);
+  return way.length ? arrowToward(way[0].x - fx, way[0].y - fy) : 0;
+}
+
+/**
+ * A tapped way as the screen marks it over the map (screen.ts drawWay), in view squares: the squares it steps onto,
+ * and the one it ends on, with what happens there - walked to, someone talked to, a foe fought, something else walked
+ * into (a door, a chest, a wall), or no way there at all.
+ */
+export interface WayShown {
+  steps: { x: number; y: number }[];
+  end: { x: number; y: number };
+  kind: 'walk' | 'into' | 'talk' | 'foe' | 'none';
+}
+
+/** A way kept to be shown: in the map's squares where the view moves with the party (a town, the world), else the view's. */
+interface Way extends WayShown {
+  frame: 'map' | 'view';
+}
+
+/** How long a way stays marked after a tap that walks no further (a step, a blow), ms. */
+const WAY_LINGER_MS = 300;
 
 interface Press {
   id: number;
@@ -133,6 +161,8 @@ interface Press {
   /** Walking the way the finger points (the map, held). */
   steering: boolean;
   timer: ReturnType<typeof setTimeout> | null;
+  /** Dragged on the map: choosing where to go (the way marked as it moves), never walking the way it points. */
+  dragged: boolean;
   /** How much of a drag a dial has turned for already (CSS px). */
   dialX: number;
   dialY: number;
@@ -165,6 +195,9 @@ export class DirectTouch {
   private walkTimer: ReturnType<typeof setInterval> | null = null;
   /** The finger's last place while steering, in the screen's EGA pixels. */
   private steerAt: { x: number; y: number } | null = null;
+  /** The way marked over the map: where a finger down would walk, or where the party is walking. */
+  private way: Way | null = null;
+  private wayTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly g: Game,
@@ -190,6 +223,100 @@ export class DirectTouch {
     document.addEventListener('dblclick', stop);
     // A key or a gamepad's button stops a walk where it is.
     window.addEventListener('keydown', () => this.stopWalk());
+    screen.wayShown = () => this.wayNow();
+  }
+
+  // --- The way marked -------------------------------------------------------------
+
+  private setWay(way: Way | null): void {
+    if (this.wayTimer !== null) clearTimeout(this.wayTimer);
+    this.wayTimer = null;
+    const same = JSON.stringify(way) === JSON.stringify(this.way);
+    this.way = way;
+    if (!same) this.screen.fb.dirty = true;
+  }
+
+  /** The way marked taken away in a moment, unless a finger or a walk has marked another by then. */
+  private wayLinger(): void {
+    if (this.wayTimer !== null) clearTimeout(this.wayTimer);
+    this.wayTimer = setTimeout(() => {
+      this.wayTimer = null;
+      if (!this.press && !this.walk) this.setWay(null);
+    }, WAY_LINGER_MS);
+  }
+
+  /** The way to mark now, in view squares: none over a menu, a question or a talk - only at the prompt, or a step. */
+  private wayNow(): WayShown | null {
+    const w = this.way;
+    const g = this.g;
+    if (!w || !g.inPlay) return null;
+    const mode = this.mode;
+    if (mode !== 'command' && mode !== 'busy') return null;
+    if (w.frame === 'view') return w;
+    const s = g.s;
+    const rel = (d: number): number => (g.outdoors ? ((((d + 0x80) % 0x100) + 0x100) % 0x100) - 0x80 : d);
+    const view = (p: { x: number; y: number }): { x: number; y: number } => ({ x: rel(p.x - s.x) + MIDDLE, y: rel(p.y - s.y) + MIDDLE });
+    return { steps: w.steps.map(view), end: view(w.end), kind: w.kind };
+  }
+
+  /** The view's squares as the map's (a town, the world), for a way that the view will move under. */
+  private onMap(p: { x: number; y: number }): { x: number; y: number } {
+    const g = this.g;
+    const wrap = g.outdoors ? 0xff : 0xffff;
+    return { x: (g.s.x + p.x - MIDDLE) & wrap, y: (g.s.y + p.y - MIDDLE) & wrap };
+  }
+
+  /** What happens at the end of a way to the view's square (x, y): walked to, a townsman talked to, a foe fought... */
+  private kindAt(x: number, y: number, found: boolean): WayShown['kind'] {
+    if (!found) return 'none';
+    if (this.open(x, y)) return 'walk';
+    const g = this.g;
+    const s = g.s;
+    const { x: mx, y: my } = this.onMap({ x, y });
+    const a = this.actorAt(mx, my);
+    if (!a) return 'into';
+    const tile = s.actors[a].tile;
+    // As walking into it would (outdoors.ts mayMove, town.ts bump): a creature is struck; one of a place's people is
+    // spoken to, as is anyone not a creature.
+    if (g.outdoors) return (tile >= 0x80 && tile !== 0xfc && (tile < 0xe8 || tile > 0xef)) || (tile & 0xfc) === 0x2c ? 'foe' : 'into';
+    return tile < 0x80 || npcOfActor(g, a) >= 0 ? 'talk' : tile === 0xfc ? 'into' : 'foe';
+  }
+
+  /** The way a finger at the view's square `square` would go, at the command prompt; null where a tap walks nowhere. */
+  private wayFor(square: { x: number; y: number }): Way | null {
+    const g = this.g;
+    if (g.commandPrompt === 'combat') return this.fightWay(square);
+    if (!this.walksTheMap() || g.inDungeon || g.s.sailing !== 0) return null;
+    if (square.x === MIDDLE && square.y === MIDDLE) return null;
+    const found = wayTo(square.x, square.y, (x, y) => this.open(x, y));
+    return {
+      frame: 'map',
+      steps: found.slice(0, -1).map((p) => this.onMap(p)),
+      end: this.onMap(square),
+      kind: this.kindAt(square.x, square.y, found.length > 0),
+    };
+  }
+
+  /** The way a finger at `square` would go in a fight, from whoever's turn it is: a blow, or the way toward it. */
+  private fightWay(square: { x: number; y: number }): Way | null {
+    const g = this.g;
+    const i = g.s.combatTurn;
+    const c = g.combat[i];
+    if (!c || (c.flags & CF.Player) === 0 || (square.x === c.x && square.y === c.y)) return null;
+    const j = combatantAt(g, square.x, square.y);
+    const foe = j >= 0 && onMonsterSide(g, j);
+    if (foe && snapTargets(g, i).includes(j)) return { frame: 'view', steps: [], end: square, kind: 'foe' };
+    const tile = g.s.actors[c.actor].tile;
+    const open = (x: number, y: number): boolean => combatantAt(g, x, y) < 0 && arenaFree(g, tile, x, y);
+    const found = wayTo(square.x, square.y, open, c.x, c.y);
+    const kind = !found.length ? 'none' : foe ? 'foe' : open(square.x, square.y) ? 'walk' : 'into';
+    return { frame: 'view', steps: found.slice(0, -1), end: square, kind };
+  }
+
+  /** The way marked for a finger at (x, y) of the screen (EGA pixels), at the command prompt. */
+  private preview(x: number, y: number): void {
+    const square = this.squareAt(x, y);
+    this.setWay(square ? this.wayFor(square) : null);
   }
 
   /** What the game is waiting on now, as a tap reads it. */
@@ -231,6 +358,7 @@ export class DirectTouch {
       inBox: false,
       steering: false,
       timer: null,
+      dragged: false,
       dialX: 0,
       dialY: 0,
       moved: false,
@@ -241,9 +369,10 @@ export class DirectTouch {
       press.row = this.rowAt(at.x, at.y);
       if (press.row >= 0) this.pick(press.row, false);
     }
-    if (mode === 'command' && at && this.walksTheMap() && this.squareAt(at.x, at.y)) {
-      // Held, it walks the way it points.
-      press.timer = setTimeout(() => this.steer(press, at), HOLD_MS);
+    if (mode === 'command' && at) {
+      // Where it would go, marked while the finger is down (and moved with it); held still, it walks the way it points.
+      this.preview(at.x, at.y);
+      if (this.walksTheMap() && this.squareAt(at.x, at.y)) press.timer = setTimeout(() => this.steer(press, at), HOLD_MS);
     }
   }
 
@@ -286,9 +415,16 @@ export class DirectTouch {
     if (press.mode === 'command') {
       if (press.steering) {
         if (at) this.steerAt = { x: at.x, y: at.y };
-      } else if (Math.abs(dx) + Math.abs(dy) > DRAG_PX && at && this.walksTheMap()) {
-        this.steer(press, at);
+        return;
       }
+      // Dragged: choosing where to go, the way marked as the finger moves, lifted to walk it.
+      if (!press.dragged && Math.abs(dx) + Math.abs(dy) > DRAG_PX) {
+        press.dragged = true;
+        if (press.timer) clearTimeout(press.timer);
+        press.timer = null;
+      }
+      if (at) this.preview(at.x, at.y);
+      else this.setWay(null);
     }
   }
 
@@ -300,9 +436,12 @@ export class DirectTouch {
     if (press.steering) {
       this.screen.holds.letGo('touch');
       this.steerAt = null;
+      this.setWay(null);
       return;
     }
     const at = this.screen.pointAt(e.clientX, e.clientY);
+    // The way marked stays as long as a walk goes on (walkOn), or a moment for a tap that walks no further.
+    if (press.mode === 'command') this.wayLinger();
     const dx = e.clientX - press.x;
     const dy = e.clientY - press.y;
     const quick = performance.now() - press.t < SWIPE_MS;
@@ -346,6 +485,7 @@ export class DirectTouch {
     if (press.steering) this.screen.holds.letGo('touch');
     this.steerAt = null;
     this.press = null;
+    this.setWay(null);
   }
 
   // --- Lists -----------------------------------------------------------------------
@@ -507,8 +647,12 @@ export class DirectTouch {
       const centre = VIEW_AT + MIDDLE * SQUARE + SQUARE / 2;
       const [dx, dy] = [to.x - centre, to.y - centre];
       // Within the party's own square, no way at all.
-      if (Math.abs(dx) < SQUARE / 2 && Math.abs(dy) < SQUARE / 2) return;
-      this.key(arrowToward(dx, dy), held);
+      if (Math.abs(dx) < SQUARE / 2 && Math.abs(dy) < SQUARE / 2) return this.setWay(null);
+      const key = arrowToward(dx, dy);
+      // The square it steps to next, marked.
+      const [sx, sy] = STEPS.find((st) => st[2] === key)!;
+      this.setWay({ frame: 'view', steps: [], end: { x: MIDDLE + sx, y: MIDDLE + sy }, kind: 'walk' });
+      this.key(key, held);
     };
     step(false);
     this.screen.holds.hold('touch', () => step(true));
@@ -527,9 +671,11 @@ export class DirectTouch {
   }
 
   private stopWalk(): void {
+    const walking = this.walk !== null;
     this.walk = null;
     if (this.walkTimer !== null) clearInterval(this.walkTimer);
     this.walkTimer = null;
+    if (walking && !this.press) this.setWay(null);
   }
 
   /** The actor slot standing on the map's square (x, y) on this level, or 0. */
@@ -571,7 +717,15 @@ export class DirectTouch {
     if (tx === MIDDLE && ty === MIDDLE) return this.stopWalk();
     if (tx < 0 || ty < 0 || tx >= ACROSS || ty >= ACROSS || w.steps >= WALK_STEPS) return this.stopWalk();
     const open = (x: number, y: number): boolean => this.open(x, y);
-    let key = firstStep(tx, ty, open);
+    const found = wayTo(tx, ty, open);
+    // What is left of it, marked over the map.
+    this.setWay({
+      frame: 'map',
+      steps: found.slice(0, -1).map((p) => this.onMap(p)),
+      end: { x: w.x, y: w.y },
+      kind: this.kindAt(tx, ty, found.length > 0),
+    });
+    let key = found.length ? arrowToward(found[0].x - MIDDLE, found[0].y - MIDDLE) : 0;
     // No way there: a step toward it, which says what is in the way.
     if (key === 0) key = w.steps === 0 ? arrowToward(tx - MIDDLE, ty - MIDDLE) : 0;
     if (key === 0) return this.stopWalk();

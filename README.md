@@ -30,8 +30,12 @@ finger on the game itself rather than a drawn controller.
   or does what walking into it does: opens the door, talks to the
   townsman, strikes the foe, searches the chest. A tap further off walks
   there by the shortest way, square by square, and walks into whatever was
-  tapped at the end (a townsman who wanders is followed). Hold a finger
-  down to walk the way it points. Tap the party for what there is to do
+  tapped at the end (a townsman who wanders is followed). While the
+  finger is down the way is marked over the map, a dot on each square and
+  a bracket on the last, gold to walk there, blue to talk, red to fight,
+  grey where there is no way; slide the finger to choose another square,
+  and lift it to go, the marks shrinking as the party walks. Hold a finger
+  still to walk the way it points. Tap the party for what there is to do
   here.
 - **Fights**: tap a foe your weapon reaches to strike or shoot it, or any
   square to step toward it; where a crosshair is up, tap what to aim at.

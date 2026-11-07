@@ -40,9 +40,13 @@ finger on the game itself rather than a drawn controller.
   finger is down the way is marked over the map, a dot on each square and
   a bracket on the last, gold to walk there, blue to talk, red to fight,
   grey where there is no way; slide the finger to choose another square,
-  and lift it to go, the marks shrinking as the party walks. Hold a finger
-  still to walk the way it points. Tap the party for what there is to do
-  here.
+  and lift it to go, the marks shrinking as the party walks. **Hold** a
+  finger down (a thumb that wavers is still holding, and a finger slid and
+  rested holds anew): the party walks toward it for as long as it stays
+  down, round walls and whatever is in the way, the way marked as it goes;
+  slide it to steer, lift it to stop. Held, the party opens a door it
+  comes to but walks into no one - talking and fighting are a tap's. Tap
+  the party for what there is to do here.
 - **Fights**: tap a foe your weapon reaches to strike or shoot it, or any
   square to step toward it; where a crosshair is up, tap what to aim at.
 - **Dungeons**: tap the view's left or right third to turn, its middle to

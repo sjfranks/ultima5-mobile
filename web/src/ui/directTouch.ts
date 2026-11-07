@@ -6,15 +6,21 @@
  * - On the map at the command prompt: a tap on a square beside the party steps there - or does what walking into it
  *   does (a door opened, a townsman talked to, a foe struck: bumpAct.ts); a tap further off walks there, square by
  *   square along a way the party can go, and whatever stands there is walked into at the end (a townsman who wanders
- *   is followed); a tap on the party opens the command menu. A finger held down, or dragged, walks the way it points
- *   from the party for as long as it stays down.
+ *   is followed); a tap on the party opens the command menu. A finger held down - still, or come to rest after a slide
+ *   - walks the party toward it for as long as it stays down, along a way it can go and round what is in the way, the
+ *   way marked; slid while held, it walks toward where the finger is now. Held, it opens a door it comes to, but walks
+ *   into no one: a townsman talked to, a foe struck, are a tap's.
  * - In a fight, the same from whoever's turn it is: a foe their weapon reaches is struck or shot at (where the aim is
  *   up, the square tapped is aimed at and loosed).
  * - In a dungeon's first-person view, the view's left and right thirds turn the party, its middle steps ahead, and its
  *   foot back; with the whole-level map up, the map is walked as a town's is, a square at a time.
- * - In a menu, the line under the finger is barred as it moves, and chosen as it lifts there; a swipe turns a page of a
- *   long list; a tap outside the box backs out. A number's dial turns as a finger is dragged up and down over it.
+ * - In a menu, the line under the finger is barred as it moves, and chosen as it lifts there; a list too long to show
+ *   whole moves with the finger as a phone's lists do, and glides on a moment after a flick (lifted after it has moved,
+ *   nothing is chosen); a tap outside the box backs out. A number's dial turns as a finger is dragged up and down
+ *   over it.
  * - Where a way is asked, the square tapped from whoever acts gives it; where a member is, their line in the panel.
+ * - Upright, a tap on the log's pane opens the whole log over the map; the next tap anywhere closes it (on the log,
+ *   that is all it does).
  * - Anything else the game waits on, a tap goes on (A).
  *
  * Commands the finger cannot point at - Cast, Attack, Pass, the Pause menu - are the touch bar's (touchBar.ts).
@@ -26,7 +32,7 @@ import { arenaFree, combatantAt, onMonsterSide, snapTargets } from '../game/comb
 import { byCompass } from '../game/dungeonMap.ts';
 import { CF, type Game } from '../game/game.ts';
 import { npcOfActor } from '../game/town.ts';
-import { K, Pad, TOUCH, touchAt, touchPick } from '../game/io.ts';
+import { K, Pad, TOUCH, touchAt, touchPick, touchScroll } from '../game/io.ts';
 import type { Screen } from './screen.ts';
 import { cancelsTouch } from './touch.ts';
 
@@ -37,17 +43,25 @@ const ACROSS = 11;
 const MIDDLE = 5;
 
 /**
- * How long a finger stays down on the map, still, before it walks the way it points (ms); and how far it moves to be a
- * drag (CSS px), which chooses where a tap goes instead, the way marked as it moves.
+ * How long a finger rests on the map before the party walks toward it (ms) - resting, within REST_PX (CSS px) of
+ * where it came to rest: a thumb on a moving train wavers, and a finger slid that far starts its rest again.
  */
-const HOLD_MS = 450;
-const DRAG_PX = 14;
+const HOLD_MS = 280;
+const REST_PX = 18;
 /** A swipe: this far (CSS px) in this long (ms), mostly up or down. */
 const SWIPE_PX = 30;
 const SWIPE_MS = 420;
 /** How far a finger moves on a dial for each turn of it (CSS px): up and down by one, across by ten. */
 const DIAL_PX = 16;
 const DIAL_TEN_PX = 28;
+/**
+ * A flick of a long list: as fast as this at the lift (CSS px a millisecond), measured over the finger's last
+ * FLICK_MS; it glides on, slowing by FLICK_SLOWING a frame (of 16 ms) till it is slower than FLICK_STOP.
+ */
+const FLICK_FAST = 0.35;
+const FLICK_MS = 100;
+const FLICK_SLOWING = 0.94;
+const FLICK_STOP = 0.03;
 /** The most squares a walk to a tapped square takes, the way replanned at each. */
 const WALK_STEPS = 24;
 
@@ -161,12 +175,37 @@ interface Press {
   /** Walking the way the finger points (the map, held). */
   steering: boolean;
   timer: ReturnType<typeof setTimeout> | null;
-  /** Dragged on the map: choosing where to go (the way marked as it moves), never walking the way it points. */
-  dragged: boolean;
+  /** Where the finger came to rest last on the map (CSS px), and where it is (the screen's EGA pixels). */
+  rest: { x: number; y: number };
+  at: { x: number; y: number } | null;
+  /** A list too long to show whole, moving with the finger (menu.ts choose's touchScroll). */
+  list: ListDrag | null;
+  /** Down on the log: lifted there unmoved, the whole log opened (or closed). */
+  log: boolean;
   /** How much of a drag a dial has turned for already (CSS px). */
   dialX: number;
   dialY: number;
   moved: boolean;
+}
+
+/** A long list as the finger moves it: the lines it showed first when it went down, and shows now; the line barred. */
+interface ListDrag {
+  /** The list's title: a glide stops where the list is no longer up (another opened over it, or it was left). */
+  title: string;
+  top0: number;
+  /** Where the list stands, in lines, between whole ones (the list shows the nearest). */
+  top: number;
+  shown: number;
+  line: number;
+  /** A line's height on the page and the top of the first line shown (CSS px); the lines shown, and all there are. */
+  rowH: number;
+  firstY: number;
+  rows: number;
+  count: number;
+  /** Whether it has moved under the finger: lifted then, nothing is chosen. */
+  scrolled: boolean;
+  /** The finger's last places, for a flick. */
+  trail: { y: number; t: number }[];
 }
 
 /** A walk to a square tapped: where to (the map's squares), or after whom; and the step last given, to see it was taken. */
@@ -195,9 +234,19 @@ export class DirectTouch {
   private walkTimer: ReturnType<typeof setInterval> | null = null;
   /** The finger's last place while steering, in the screen's EGA pixels. */
   private steerAt: { x: number; y: number } | null = null;
+  /** What a held finger last walked into (a door, the map's square): not again till it points at another. */
+  private steerBumped: { x: number; y: number } | null = null;
+  /**
+   * Where a held finger walks the party to (the map's square), and the view's square it was under: kept till the party
+   * is there, can go no nearer, or the finger moves to another square - so the way does not waver as the view moves -
+   * then the square under the finger again.
+   */
+  private steerGoal: { x: number; y: number; from: { x: number; y: number } } | null = null;
   /** The way marked over the map: where a finger down would walk, or where the party is walking. */
   private way: Way | null = null;
   private wayTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A long list gliding on after a flick. */
+  private flick: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly g: Game,
@@ -222,7 +271,10 @@ export class DirectTouch {
     document.addEventListener('gesturestart', stop, { passive: false });
     document.addEventListener('dblclick', stop);
     // A key or a gamepad's button stops a walk where it is.
-    window.addEventListener('keydown', () => this.stopWalk());
+    window.addEventListener('keydown', () => {
+      this.stopWalk();
+      this.stopFlick();
+    });
     screen.wayShown = () => this.wayNow();
   }
 
@@ -345,6 +397,7 @@ export class DirectTouch {
     if (!e.isPrimary) return;
     e.preventDefault();
     this.stopWalk();
+    this.stopFlick();
     this.screen.canvas.setPointerCapture?.(e.pointerId);
     const mode = this.mode;
     const at = this.screen.pointAt(e.clientX, e.clientY);
@@ -358,21 +411,31 @@ export class DirectTouch {
       inBox: false,
       steering: false,
       timer: null,
-      dragged: false,
+      rest: { x: e.clientX, y: e.clientY },
+      at: at ? { x: at.x, y: at.y } : null,
+      list: null,
+      log: false,
       dialX: 0,
       dialY: 0,
       moved: false,
     };
     this.press = press;
+    if (this.screen.onLog(e.clientX, e.clientY)) {
+      press.log = true;
+      return;
+    }
+    // The whole log open, a tap elsewhere closes it - and goes on to do what it does.
+    this.screen.showLog(false);
     if ((mode === 'list' || mode === 'title') && at) {
       press.inBox = this.inBox(at.x, at.y);
       press.row = this.rowAt(at.x, at.y);
       if (press.row >= 0) this.pick(press.row, false);
+      if (mode === 'list') press.list = this.listDrag(e.clientY, press.row);
     }
     if (mode === 'command' && at) {
       // Where it would go, marked while the finger is down (and moved with it); held still, it walks the way it points.
       this.preview(at.x, at.y);
-      if (this.walksTheMap() && this.squareAt(at.x, at.y)) press.timer = setTimeout(() => this.steer(press, at), HOLD_MS);
+      if (this.walksTheMap() && this.squareAt(at.x, at.y)) press.timer = setTimeout(() => this.steer(press), HOLD_MS);
     }
   }
 
@@ -382,7 +445,12 @@ export class DirectTouch {
     const dx = e.clientX - press.x;
     const dy = e.clientY - press.y;
     if (Math.abs(dx) + Math.abs(dy) > 8) press.moved = true;
+    if (press.log) return;
     const at = this.screen.pointAt(e.clientX, e.clientY);
+    if (press.list) {
+      this.dragList(press, e.clientY);
+      return;
+    }
     if (press.mode === 'list' || press.mode === 'title') {
       // The bar follows the finger, line to line; off the lines it stays where it was.
       const row = at ? this.rowAt(at.x, at.y) : -1;
@@ -413,15 +481,17 @@ export class DirectTouch {
       return;
     }
     if (press.mode === 'command') {
+      if (at) press.at = { x: at.x, y: at.y };
       if (press.steering) {
         if (at) this.steerAt = { x: at.x, y: at.y };
         return;
       }
-      // Dragged: choosing where to go, the way marked as the finger moves, lifted to walk it.
-      if (!press.dragged && Math.abs(dx) + Math.abs(dy) > DRAG_PX) {
-        press.dragged = true;
+      // Slid: choosing where to go, the way marked as the finger moves, lifted to walk it - or come to rest again, to
+      // walk toward it while it stays.
+      if (Math.hypot(e.clientX - press.rest.x, e.clientY - press.rest.y) > REST_PX) {
+        press.rest = { x: e.clientX, y: e.clientY };
         if (press.timer) clearTimeout(press.timer);
-        press.timer = null;
+        press.timer = at && this.walksTheMap() && this.squareAt(at.x, at.y) ? setTimeout(() => this.steer(press), HOLD_MS) : null;
       }
       if (at) this.preview(at.x, at.y);
       else this.setWay(null);
@@ -433,6 +503,10 @@ export class DirectTouch {
     if (!press || e.pointerId !== press.id) return;
     this.press = null;
     if (press.timer) clearTimeout(press.timer);
+    if (press.log) {
+      if (!press.moved) this.screen.showLog();
+      return;
+    }
     if (press.steering) {
       this.screen.holds.letGo('touch');
       this.steerAt = null;
@@ -445,10 +519,15 @@ export class DirectTouch {
     const dx = e.clientX - press.x;
     const dy = e.clientY - press.y;
     const quick = performance.now() - press.t < SWIPE_MS;
+    if (press.list?.scrolled) {
+      // Moved under the finger: nothing chosen - unless flicked, it stands where it is, the bar on the line it was on.
+      this.flickList(press.list);
+      return;
+    }
     if (press.mode === 'list' || press.mode === 'title') {
       const more = this.g.menuShown?.more;
-      // A swipe up shows the next page of a long list, down the one before.
-      if (quick && Math.abs(dy) > SWIPE_PX && Math.abs(dy) > 1.5 * Math.abs(dx) && press.mode === 'list') {
+      // A swipe up shows the next page of a long list that does not move with the finger, down the one before.
+      if (quick && !press.list && Math.abs(dy) > SWIPE_PX && Math.abs(dy) > 1.5 * Math.abs(dx) && press.mode === 'list') {
         if (dy < 0 && more?.below) this.key(K.Right);
         else if (dy > 0 && more?.above) this.key(K.Left);
         return;
@@ -489,6 +568,73 @@ export class DirectTouch {
   }
 
   // --- Lists -----------------------------------------------------------------------
+
+  /** A long list's drag begun with the finger at `y` (CSS px) on line `line`; null for a list shown whole. */
+  private listDrag(y: number, line: number): ListDrag | null {
+    const m = this.g.menuShown;
+    const rows = m?.rows;
+    if (!m?.scrolls || !rows || rows.length < 2) return null;
+    const first = this.screen.rectOnPage(...rows[0].r);
+    const second = this.screen.rectOnPage(...rows[1].r);
+    if (!first || !second || second.y <= first.y) return null;
+    const top0 = rows[0].i;
+    return {
+      title: m.title,
+      top0,
+      top: top0,
+      shown: top0,
+      line: line >= 0 ? line : m.at,
+      rowH: second.y - first.y,
+      firstY: first.y,
+      rows: rows.length,
+      count: m.labels.length,
+      scrolled: false,
+      trail: [{ y, t: performance.now() }],
+    };
+  }
+
+  /** The list moved with the finger, now at `y` (CSS px): the line under it barred, as it moves with it. */
+  private dragList(press: Press, y: number): void {
+    const d = press.list!;
+    const now = performance.now();
+    d.trail.push({ y, t: now });
+    while (d.trail.length > 2 && now - d.trail[0].t > FLICK_MS) d.trail.shift();
+    d.top = Math.max(0, Math.min(d.count - d.rows, d.top0 + (press.y - y) / d.rowH));
+    const under = Math.floor((y - d.firstY) / d.rowH + d.top);
+    this.showList(d, under);
+  }
+
+  /** The list shown at the whole line nearest where it stands, the bar on `line` (or the nearest line in sight). */
+  private showList(d: ListDrag, line: number): void {
+    const top = Math.round(d.top);
+    const barred = Math.max(top, Math.min(top + d.rows - 1, line));
+    if (top !== d.top0) d.scrolled = true;
+    if (top === d.shown && barred === d.line) return;
+    d.shown = top;
+    d.line = barred;
+    this.key(touchScroll(top, barred));
+  }
+
+  /** Lifted after a flick: the list glides on, slowing, the bar kept in sight. */
+  private flickList(d: ListDrag): void {
+    const [a, b] = [d.trail[0], d.trail[d.trail.length - 1]];
+    let v = b.t > a.t ? (b.y - a.y) / (b.t - a.t) : 0; // CSS px a ms, down the page
+    if (Math.abs(v) < FLICK_FAST) return;
+    this.stopFlick();
+    this.flick = setInterval(() => {
+      const m = this.g.menuShown;
+      if (!m || m.title !== d.title || m.labels.length !== d.count) return this.stopFlick();
+      d.top = Math.max(0, Math.min(d.count - d.rows, d.top - (v * 16) / d.rowH));
+      this.showList(d, d.line);
+      v *= FLICK_SLOWING;
+      if (Math.abs(v) < FLICK_STOP || d.top <= 0 || d.top >= d.count - d.rows) this.stopFlick();
+    }, 16);
+  }
+
+  private stopFlick(): void {
+    if (this.flick !== null) clearInterval(this.flick);
+    this.flick = null;
+  }
 
   private rows(): { i: number; r: [number, number, number, number] }[] {
     return this.g.titleRows ?? this.g.menuShown?.rows ?? [];
@@ -634,28 +780,98 @@ export class DirectTouch {
 
   // --- Walking --------------------------------------------------------------------
 
-  /** The finger held on the map: the party walks the way it points, while it stays down. */
-  private steer(press: Press, at: { x: number; y: number }): void {
-    if (this.press !== press || press.steering) return;
+  /**
+   * The finger held on the map: the party walks toward it while it stays down, a step at the held key's pace - in a
+   * town or the world along the way it can go to the square under the finger (planned again at every step, the view
+   * moving under the finger as it goes), and on a ship or a dungeon's map the way it points.
+   */
+  private steer(press: Press): void {
+    if (this.press !== press || press.steering || !press.at) return;
     if (press.timer) clearTimeout(press.timer);
     press.timer = null;
     press.steering = true;
-    this.steerAt = { x: at.x, y: at.y };
+    this.steerAt = { ...press.at };
+    this.steerBumped = null;
+    this.steerGoal = null;
     const step = (held: boolean): void => {
       const to = this.steerAt;
       if (!to || this.mode !== 'command' || !this.walksTheMap()) return;
-      const centre = VIEW_AT + MIDDLE * SQUARE + SQUARE / 2;
-      const [dx, dy] = [to.x - centre, to.y - centre];
-      // Within the party's own square, no way at all.
-      if (Math.abs(dx) < SQUARE / 2 && Math.abs(dy) < SQUARE / 2) return this.setWay(null);
-      const key = arrowToward(dx, dy);
-      // The square it steps to next, marked.
-      const [sx, sy] = STEPS.find((st) => st[2] === key)!;
-      this.setWay({ frame: 'view', steps: [], end: { x: MIDDLE + sx, y: MIDDLE + sy }, kind: 'walk' });
-      this.key(key, held);
+      const key = this.paths() ? this.stepToward(to) : this.stepAlong(to);
+      if (key) this.key(key, held);
     };
     step(false);
     this.screen.holds.hold('touch', () => step(true));
+  }
+
+  /** Whether a held finger is walked toward along a way (a town, the world), rather than the way it points. */
+  private paths(): boolean {
+    const g = this.g;
+    return !g.inDungeon && g.s.sailing === 0 && (g.commandPrompt === 'town' || g.commandPrompt === 'outdoors');
+  }
+
+  /**
+   * The step toward the square under a held finger at `to` (EGA pixels), along the way there, its way marked; 0 to stand
+   * - there already, no way, or the next step onto someone (talked to or struck only by a tap). Into anything else at
+   * the way's end - a door - it goes once, as a step into it does.
+   */
+  private stepToward(to: { x: number; y: number }): number {
+    const g = this.g;
+    const s = g.s;
+    const square = this.squareAt(to.x, to.y);
+    if (!square) {
+      this.setWay(null);
+      return 0;
+    }
+    const rel = (d: number): number => (g.outdoors ? ((((d + 0x80) % 0x100) + 0x100) % 0x100) - 0x80 : d);
+    const inView = (p: { x: number; y: number }): { x: number; y: number } => ({ x: rel(p.x - s.x) + MIDDLE, y: rel(p.y - s.y) + MIDDLE });
+    let goal = this.steerGoal;
+    const reached = goal !== null && inView(goal).x === MIDDLE && inView(goal).y === MIDDLE;
+    if (!goal || reached || goal.from.x !== square.x || goal.from.y !== square.y) {
+      if (square.x === MIDDLE && square.y === MIDDLE) {
+        this.steerGoal = null;
+        this.setWay(null);
+        return 0;
+      }
+      goal = this.steerGoal = { ...this.onMap(square), from: square };
+    }
+    const target = inView(goal);
+    if (target.x < 0 || target.y < 0 || target.x >= ACROSS || target.y >= ACROSS) {
+      this.steerGoal = null;
+      return 0;
+    }
+    const open = (x: number, y: number): boolean => this.open(x, y);
+    const found = wayTo(target.x, target.y, open);
+    const kind = this.kindAt(target.x, target.y, found.length > 0);
+    this.setWay({ frame: 'map', steps: found.slice(0, -1).map((p) => this.onMap(p)), end: { x: goal.x, y: goal.y }, kind });
+    // No nearer: the square under the finger again at the next step (the view moved under it on the way).
+    const stand = (): number => {
+      this.steerGoal = null;
+      return 0;
+    };
+    if (!found.length) return stand();
+    const next = found[0];
+    if (!open(next.x, next.y)) {
+      if (next.x !== target.x || next.y !== target.y || kind !== 'into') return stand();
+      // Walked into once (a door opened, or found locked), not again while the finger stays on it.
+      if (this.steerBumped?.x === goal.x && this.steerBumped.y === goal.y) return stand();
+      this.steerBumped = { x: goal.x, y: goal.y };
+    }
+    return arrowToward(next.x - MIDDLE, next.y - MIDDLE);
+  }
+
+  /** The step the way a held finger at `to` (EGA pixels) points from the party, the square marked; 0 on the party. */
+  private stepAlong(to: { x: number; y: number }): number {
+    const centre = VIEW_AT + MIDDLE * SQUARE + SQUARE / 2;
+    const [dx, dy] = [to.x - centre, to.y - centre];
+    // Within the party's own square, no way at all.
+    if (Math.abs(dx) < SQUARE / 2 && Math.abs(dy) < SQUARE / 2) {
+      this.setWay(null);
+      return 0;
+    }
+    const key = arrowToward(dx, dy);
+    const [sx, sy] = STEPS.find((st) => st[2] === key)!;
+    this.setWay({ frame: 'view', steps: [], end: { x: MIDDLE + sx, y: MIDDLE + sy }, kind: 'walk' });
+    return key;
   }
 
   /** Walk to the view's square `to`: the way planned again at every square, until there, or stopped. */

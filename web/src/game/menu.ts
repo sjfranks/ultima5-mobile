@@ -18,7 +18,7 @@ import { drawTextCard } from './shopCard.ts';
 import { CF, Game } from './game.ts';
 import { menuKey, PAUSED } from './input.ts';
 import { besideHarpsichord } from './harpsichord.ts';
-import { HARPSICHORD, K, Pad, pickOf, SAVE_NOW } from './io.ts';
+import { HARPSICHORD, K, Pad, pickOf, SAVE_NOW, scrollOf } from './io.ts';
 import { somethingBeside } from './items.ts';
 import { itemCounts, nextHeld, unloaded } from './zstats.ts';
 import { holdFullPanel } from './layout.ts';
@@ -813,6 +813,7 @@ export async function choose(g: Game, title: string, items: Item[], start = 0, b
       dim: items.map((it) => it.dim === true),
       at,
       ...geometry,
+      ...(items.length > rows ? { scrolls: true as const } : {}),
     };
     // (A talk's menu leaves the map going on round it: the townsman and the party, the water.)
     const k = await menuKey(g, boxed ? items.flatMap((it) => (it.key ? [it.key] : [])) : [], animate);
@@ -850,6 +851,23 @@ export async function choose(g: Game, title: string, items: Item[], start = 0, b
       return next >= 0 && next < items.length ? next : at;
     };
     const long = items.length > rows;
+    const scroll = scrollOf(k);
+    if (scroll) {
+      // A long list dragged (ui/directTouch.ts): it moves with the finger, as a phone's lists do - the line it shows
+      // first set, and the bar on the line under the finger, or the nearest in sight that can be rested on.
+      if (!long) continue;
+      top = Math.max(0, Math.min(items.length - rows, scroll.top));
+      const restable = (i: number): boolean => items[i].enabled !== false || items[i].rest === true;
+      const want = Math.max(top, Math.min(top + rows - 1, scroll.line));
+      let next = -1;
+      for (let d = 0; d < rows && next < 0; d++)
+        for (const i of [want - d, want + d]) if (next < 0 && i >= top && i < top + rows && restable(i)) next = i;
+      if (next >= 0 && next !== at) {
+        at = next;
+        menuSound(g, 'move');
+      }
+      continue;
+    }
     const pick = pickOf(k);
     if (pick) {
       // A line tapped (ui/directTouch.ts): the bar on it while the finger is down, chosen as it lifts there.
@@ -1997,6 +2015,12 @@ export function settingLines(g: Game, title = false): Setting[] {
       label: `Dialog: ${o.dialog === 'play' ? 'Play' : 'Log'}`,
       note: 'Play: what is said, in the play area. Log: in the message log.',
       act: () => void (o.dialog = o.dialog === 'play' ? 'log' : 'play'),
+    },
+    {
+      // The touch bar's buttons for the thumb of one hand or the other (ui/touchBar.ts).
+      label: `Buttons: ${o.hand === 'left' ? 'Left hand' : 'Right hand'}`,
+      note: 'Touch bar: Act and OK at the left, for the left thumb, or the right.',
+      act: () => void (o.hand = o.hand === 'left' ? 'right' : 'left'),
     },
     {
       // Each look its own: the PC (1988) look's on until turned off.

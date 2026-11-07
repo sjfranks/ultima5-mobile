@@ -42,7 +42,19 @@ import type { Tiles } from '../game/settings.ts';
 import type { StandardArt } from './standardArt.ts';
 import { setChoice, setProse, setSteps, type Measure, type Run, type RunFace } from './storyText.ts';
 import { Text, type TextTarget } from './text.ts';
-import { NO_INSETS, present, toCanvas, toScreen, type Blit, type Insets, type Part, type Presentation, type Rect } from './presentation.ts';
+import {
+  NO_INSETS,
+  present,
+  toCanvas,
+  toScreen,
+  type Blit,
+  type Frame,
+  type Insets,
+  type Pane,
+  type Part,
+  type Presentation,
+  type Rect,
+} from './presentation.ts';
 import type { WayShown } from './directTouch.ts';
 
 /** A tapped way's marks (drawWay): the dots, their dark rim, and the end's bracket by what happens there. */
@@ -57,6 +69,24 @@ const WAY_COLOURS: Record<WayShown['kind'], string> = {
 };
 /** A square of the view, in EGA pixels. */
 const TILE = 16;
+/**
+ * Where the Modern look's bars are read from, for the frame drawn round the panes upright (drawFrame), in colour-page
+ * pixels: across the party box's right bar (lit from its left), and down the screen's top bar where it runs over the
+ * map's right-hand bar (lit from above) - never under a title. The bars' tone changes with where the party is
+ * (chromeTone.ts): read each time.
+ */
+const BAR_ACROSS = { x: 312 * 4, y: 40 * 4 + 2, n: 32 };
+const BAR_DOWN = { x: 188 * 4 + 2, y: 0, n: 32 };
+/** The frame's colours (Screen.tone), as red, green and blue. */
+export interface Tone {
+  lit: [number, number, number];
+  body: [number, number, number];
+  dark: [number, number, number];
+}
+
+/** 1988's frame: its blue, and the white line round each box. */
+const EGA_BLUE = '#0000aa';
+const EGA_WHITE = '#ffffff';
 
 /** The DOS timer's tick; the game animated about once per tick while waiting for a key. */
 export const TICK_MS = 1000 / 18.2;
@@ -509,6 +539,15 @@ export class Screen implements Platform {
 
   /** The way a tap will walk, or is walking, to be marked over the map (directTouch.ts); null for none. */
   wayShown: (() => WayShown | null) | null = null;
+  /** Whether the whole log is open over the map (upright, in play): a tap on the log opens it, and closes it. */
+  logOpen = false;
+  /** Which the pane under the map shows (upright, in play): the party or the log (paneTabs.ts chooses). */
+  pane: Pane = 'log';
+  /** The log as it reads now, and as it read when last shown: what is new in it while the party is shown. */
+  private logNow = '';
+  private logSeen = '';
+  /** The bars' art read from the colour page for the panes' frame: across a bar up and down, and down one across. */
+  private barArt: { across: HTMLCanvasElement; down: HTMLCanvasElement } | null = null;
 
   /**
    * A tapped way over the map, at the display's size, cut to the map's square: a dot on each square it steps onto (the
@@ -598,6 +637,48 @@ export class Screen implements Platform {
     return toScreen(p, ((clientX - r.left) * this.canvas.width) / r.width, ((clientY - r.top) * this.canvas.height) / r.height);
   }
 
+  /**
+   * The frame's colours now, for the buttons by the game (touchBar.ts, paneTabs.ts): its bars' highlight, body and shade
+   * - the Modern look's read from its frame, in its tone wherever the party is (chromeTone.ts), 1988's white and blue;
+   * null away from play, where there is no frame to match.
+   */
+  tone(): Tone | null {
+    if (!this.playFrame()) return null;
+    if (this.look !== 'standard') return { lit: [255, 255, 255], body: [0, 0, 170], dark: [0, 0, 64] };
+    const d = this.image.data;
+    const at = (i: number): [number, number, number] => {
+      const o = (BAR_ACROSS.y * HI_WIDTH + BAR_ACROSS.x + i) * 4;
+      return [d[o], d[o + 1], d[o + 2]];
+    };
+    const tone = { lit: at(6), body: at(16), dark: at(30) };
+    return tone.body[0] + tone.body[1] + tone.body[2] > 24 ? tone : null;
+  }
+
+  /** The size the log's letters are set at on the page now (CSS pixels): the buttons by the game no smaller. */
+  letterPx(): number {
+    const b = this.presented?.blits.find((x) => x.part === 'view' || x.part === 'screen');
+    if (!b) return 12;
+    return this.fit('mono', 8 * (b.dw / b.sw)).size / devicePixelRatio;
+  }
+
+  /** Whether a point of the page (CSS pixels) is on the log's pane, or the whole log open (presentation.ts logBox). */
+  onLog(clientX: number, clientY: number): boolean {
+    const box = this.presented?.logBox;
+    if (!box) return false;
+    const r = this.canvas.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return false;
+    const x = ((clientX - r.left) * this.canvas.width) / r.width;
+    const y = ((clientY - r.top) * this.canvas.height) / r.height;
+    return x >= box.x && y >= box.y && x < box.x + box.w && y < box.y + box.h;
+  }
+
+  /** The whole log opened over the map, or closed (`open`, or the other of what it is). */
+  showLog(open = !this.logOpen): void {
+    if (open === this.logOpen) return;
+    this.logOpen = open;
+    this.fb.dirty = true;
+  }
+
   /** A rectangle of the screen (EGA pixels) on the page, in CSS pixels; null where it is not shown. */
   rectOnPage(x1: number, y1: number, x2: number, y2: number): Rect | null {
     const p = this.presented;
@@ -650,7 +731,8 @@ export class Screen implements Platform {
     this.base.putImageData(this.image, 0, 0);
     const ctx = this.ctx;
     // Where the screen goes (presentation.ts): whole, or in play on an upright screen taken apart.
-    const p = present(w, h, this.playFrame(), this.panelSplit(), this.insets, this.barDepth());
+    const p = present(w, h, this.playFrame(), this.panelSplit(), this.insets, this.barDepth(), this.logOpen, this.pane);
+    if (!p.portrait) this.logOpen = false;
     const was = this.presented;
     this.presented = p;
     if (!was || JSON.stringify(was) !== JSON.stringify(p)) this.onPresent?.(p);
@@ -662,52 +744,14 @@ export class Screen implements Platform {
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign = 'start';
     ctx.imageSmoothingQuality = 'high';
-    for (const b of p.blits) {
-      // Canvas pixels to a colour-page pixel, in this blit.
-      const scale = b.dw / (b.sw * HI);
-      const whole = (Math.abs(scale - Math.round(scale)) < 0.01 && scale >= 1) || (scale > 1 && !SMOOTH);
-      const from = !whole && scale > 1 ? this.grownBy(Math.ceil(scale)) : { canvas: this.base.canvas, k: 1 };
-      const k = HI * from.k;
-      ctx.imageSmoothingEnabled = !whole;
-      ctx.drawImage(from.canvas, b.sx * k, b.sy * k, b.sw * k, b.sh * k, b.dx, b.dy, b.dw, b.dh);
-    }
-    // The letters over their cells, then the marks the chrome carries, at the display's size: each in the blit that
-    // shows its cell, cut to it.
+    // The panes' frame (upright, in play), then the screen's parts, then the letters and marks through them.
+    for (const f of p.frames) this.drawFrame(ctx, f);
+    for (const b of p.blits) this.drawBlit(ctx, b);
+    if (p.mapEdge) this.squareMapEdge(ctx, p.mapEdge);
     const letters: Letter[] = [...this.fb.lettersShown(), ...this.fb.revealing];
     const marks = this.fb.marksShown();
-    if (letters.length || marks.length) {
-      for (const b of p.blits) {
-        const f = b.dw / b.sw; // canvas pixels to an EGA pixel
-        const cell = 8 * f;
-        const inside = (x: number, y: number): boolean => x + 4 >= b.sx && x + 4 < b.sx + b.sw && y + 4 >= b.sy && y + 4 < b.sy + b.sh;
-        const clipped = p.blits.length > 1;
-        if (clipped) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(b.dx, b.dy, b.dw, b.dh);
-          ctx.clip();
-        }
-        for (const l of letters) {
-          if (!inside(l.x, l.y)) continue;
-          const [x, y] = [b.dx + (l.x - b.sx) * f, b.dy + (l.y - b.sy) * f];
-          const k = l.to ? l.k : 0;
-          if (k < 1) {
-            ctx.globalAlpha = (1 - k) * l.alpha;
-            this.setLetter(ctx, l, x, y, cell, l.colour);
-          }
-          if (l.to && k > 0) {
-            ctx.globalAlpha = k * l.alpha;
-            this.setLetter(ctx, l.to, x, y, cell, l.to.colour ?? l.colour);
-          }
-        }
-        ctx.globalAlpha = 1;
-        for (const m of marks) {
-          if (!inside(m.column * 8, m.row * 8)) continue;
-          this.setLetter(ctx, m, b.dx + (m.column * 8 - b.sx) * f, b.dy + (m.row * 8 - b.sy) * f, cell, m.colour);
-        }
-        if (clipped) ctx.restore();
-      }
-    }
+    this.readLog(letters, p);
+    this.drawLetters(ctx, p.blits, letters, marks, p.blits.length > 1);
     // The harpsichord's keyboard, through the blit that shows the map (or the whole screen).
     const over = p.blits.find((b) => b.part === 'view' || b.part === 'screen');
     // A tapped way (directTouch.ts), over the map, under anything the game puts up over it.
@@ -717,6 +761,187 @@ export class Screen implements Platform {
       const f = over.dw / over.sw;
       this.drawHarp(ctx, [f, f, over.dx - over.sx * f, over.dy - over.sy * f], this.harp, performance.now());
     }
+    this.drawWords(ctx, over);
+    // The whole log, open over the map: over everything.
+    if (p.overlay) {
+      this.drawFrame(ctx, p.overlay.frame);
+      this.drawBlit(ctx, p.overlay.blit);
+      this.drawLetters(ctx, [p.overlay.blit], letters, marks, true);
+    }
+  }
+
+  /** What the log reads now (its letters, in its rows), and, where it is shown, that all of it has been seen. */
+  private readLog(letters: Letter[], p: Presentation): void {
+    const top = this.panelSplit();
+    let now = '';
+    for (const l of letters) if (l.x >= 192 && l.y >= top && l.y < 192) now += `${l.x},${l.y},${l.text};`;
+    this.logNow = now;
+    if (!p.portrait || this.pane === 'log') this.logSeen = now;
+  }
+
+  /** Whether the log has changed since it was last shown (the party shown under the map meanwhile). */
+  get logNews(): boolean {
+    return this.logNow !== this.logSeen;
+  }
+
+  /** A part of the colour page onto the canvas, enlarged or made smaller as show() says. */
+  private drawBlit(ctx: CanvasRenderingContext2D, b: Blit): void {
+    // Canvas pixels to a colour-page pixel, in this blit.
+    const scale = b.dw / (b.sw * HI);
+    const whole = (Math.abs(scale - Math.round(scale)) < 0.01 && scale >= 1) || (scale > 1 && !SMOOTH);
+    const from = !whole && scale > 1 ? this.grownBy(Math.ceil(scale)) : { canvas: this.base.canvas, k: 1 };
+    const k = HI * from.k;
+    ctx.imageSmoothingEnabled = !whole;
+    ctx.drawImage(from.canvas, b.sx * k, b.sy * k, b.sw * k, b.sh * k, b.dx, b.dy, b.dw, b.dh);
+  }
+
+  /**
+   * The letters over their cells, then the marks the chrome carries, at the display's size: each in the blit that
+   * shows its cell, cut to it where the screen is in parts (`clipped`).
+   */
+  private drawLetters(
+    ctx: CanvasRenderingContext2D,
+    blits: Blit[],
+    letters: Letter[],
+    marks: ReturnType<Framebuffer['marksShown']>,
+    clipped: boolean,
+  ): void {
+    if (!letters.length && !marks.length) return;
+    for (const b of blits) {
+      const f = b.dw / b.sw; // canvas pixels to an EGA pixel
+      const cell = 8 * f;
+      const inside = (x: number, y: number): boolean => x + 4 >= b.sx && x + 4 < b.sx + b.sw && y + 4 >= b.sy && y + 4 < b.sy + b.sh;
+      if (clipped) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(b.dx, b.dy, b.dw, b.dh);
+        ctx.clip();
+      }
+      for (const l of letters) {
+        if (!inside(l.x, l.y)) continue;
+        const [x, y] = [b.dx + (l.x - b.sx) * f, b.dy + (l.y - b.sy) * f];
+        const k = l.to ? l.k : 0;
+        if (k < 1) {
+          ctx.globalAlpha = (1 - k) * l.alpha;
+          this.setLetter(ctx, l, x, y, cell, l.colour);
+        }
+        if (l.to && k > 0) {
+          ctx.globalAlpha = k * l.alpha;
+          this.setLetter(ctx, l.to, x, y, cell, l.to.colour ?? l.colour);
+        }
+      }
+      ctx.globalAlpha = 1;
+      for (const m of marks) {
+        if (!inside(m.column * 8, m.row * 8)) continue;
+        this.setLetter(ctx, m, b.dx + (m.column * 8 - b.sx) * f, b.dy + (m.row * 8 - b.sy) * f, cell, m.colour);
+      }
+      if (clipped) ctx.restore();
+    }
+  }
+
+  /**
+   * A frame round panes of the screen taken apart (presentation.ts Frame), in the look's own style: the Modern look's
+   * bars, read from its frame on the colour page (so in its tone where the party is), mitred at the corners and
+   * rounded outside as its own are, the bars across over the bars up and down; or 1988's blue, a white line round each
+   * pane.
+   */
+  private drawFrame(ctx: CanvasRenderingContext2D, f: Frame): void {
+    const { x, y, w, h, t } = f;
+    ctx.save();
+    if (this.look === 'standard') {
+      const art = this.readBars();
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, t * 0.35);
+      ctx.clip();
+      ctx.imageSmoothingEnabled = true;
+      for (const bx of [x, ...f.dividers, x + w - t]) ctx.drawImage(art.across, 0, 0, art.across.width, 1, bx, y, t, h);
+      for (const [by, top] of [
+        [y, true],
+        [y + h - t, false],
+      ] as const) {
+        ctx.save();
+        ctx.beginPath();
+        if (top) {
+          ctx.moveTo(x, by);
+          ctx.lineTo(x + w, by);
+          ctx.lineTo(x + w - t, by + t);
+          ctx.lineTo(x + t, by + t);
+        } else {
+          ctx.moveTo(x + t, by);
+          ctx.lineTo(x + w - t, by);
+          ctx.lineTo(x + w, by + t);
+          ctx.lineTo(x, by + t);
+        }
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(art.down, 0, 0, 1, art.down.height, x, by, w, t);
+        ctx.restore();
+      }
+    } else {
+      ctx.fillStyle = EGA_BLUE;
+      ctx.fillRect(x, y, w, h);
+      const line = t / 8;
+      const lefts = [x + t, ...f.dividers.map((d) => d + t)];
+      const rights = [...f.dividers, x + w - t];
+      for (let i = 0; i < lefts.length; i++) {
+        const [l, r] = [lefts[i], rights[i]];
+        ctx.fillStyle = EGA_WHITE;
+        ctx.beginPath();
+        ctx.roundRect(l - line, y + t - line, r - l + 2 * line, h - 2 * t + 2 * line, line * 1.5);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.fillRect(l, y + t, r - l, h - 2 * t);
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * The map's frame's right-hand bar (presentation.ts mapEdge) given corners of its own: in the Modern look the party
+   * box's right-hand corners, its own art (column 39, which no title reaches); in 1988's, blue over the party box's
+   * white line, the map's own line left as the bar's inside.
+   */
+  private squareMapEdge(ctx: CanvasRenderingContext2D, e: Rect): void {
+    if (this.look === 'standard') {
+      const foot = this.panelSplit() - 8;
+      this.drawBlit(ctx, { part: 'view', sx: 312, sy: 0, sw: 8, sh: 8, dx: e.x, dy: e.y, dw: e.w, dh: e.w });
+      this.drawBlit(ctx, { part: 'view', sx: 312, sy: foot, sw: 8, sh: 8, dx: e.x, dy: e.y + e.h - e.w, dw: e.w, dh: e.w });
+      return;
+    }
+    // (Its outer corners rounded, as the left-hand bar's are.)
+    const [x, w] = [e.x + e.w / 8, (e.w * 7) / 8];
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x, e.y, w, e.h);
+    ctx.fillStyle = EGA_BLUE;
+    ctx.beginPath();
+    ctx.roundRect(x, e.y, w, e.h, [0, e.w * 0.375, e.w * 0.375, 0]);
+    ctx.fill();
+  }
+
+  /** The Modern look's bars as they are on the colour page now (BAR_ACROSS, BAR_DOWN). */
+  private readBars(): { across: HTMLCanvasElement; down: HTMLCanvasElement } {
+    const art = (this.barArt ??= {
+      across: Object.assign(document.createElement('canvas'), { width: BAR_ACROSS.n, height: 1 }),
+      down: Object.assign(document.createElement('canvas'), { width: 1, height: BAR_DOWN.n }),
+    });
+    const src = this.image.data;
+    const read = (canvas: HTMLCanvasElement, at: { x: number; y: number; n: number }, dx: number, dy: number): void => {
+      const c = canvas.getContext('2d');
+      if (!c) return;
+      const out = c.createImageData(canvas.width, canvas.height);
+      for (let i = 0; i < at.n; i++) {
+        const from = ((at.y + i * dy) * HI_WIDTH + at.x + i * dx) * 4;
+        out.data.set(src.subarray(from, from + 4), i * 4);
+      }
+      c.putImageData(out, 0, 0);
+    };
+    read(art.across, BAR_ACROSS, 1, 0);
+    read(art.down, BAR_DOWN, 0, 1);
+    return art;
+  }
+
+  /** Page 0's story words, at the display's size, through the blit that shows the map (or the whole screen). */
+  private drawWords(ctx: CanvasRenderingContext2D, over: Blit | undefined): void {
     const words = this.fb.words[0];
     if (!words.length || !over) return;
     const scale = over.dw / over.sw / HI;

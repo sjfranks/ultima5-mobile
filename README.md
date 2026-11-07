@@ -21,11 +21,21 @@ the Apple ][ tile set, and the box's painting, for the key art.
 This fork plays the same engine on a phone held either way up, with the
 finger on the game itself rather than a drawn controller.
 
-- **Upright**, the map's square fills the width of the screen, frame,
-  moons and date and all; the party's panel and the log go under it, side
-  by side on a shorter phone, one over the other (with larger letters) on
-  a taller one. Away from play - the title, the story, a picture - and on a
-  phone held sideways, the screen is shown whole.
+- **Upright, for one thumb**: the map's square fills the width, frame,
+  moons and date and all; under it one pane, the party or the log's last
+  nine lines, its letters as large as the map's, with **Party** and
+  **Log** tabs beside it, and the Pause menu's button over them; and
+  under those the buttons, across the foot. The pane is kept to nine rows, so the map stays low
+  enough for the thumb holding the phone - tap the log to read all of it,
+  opened over the map, and tap again to close it. The pane shows the
+  party by itself while a member is chosen or Ztats is up, and the log
+  while a question waits there (and after, till the next touch); the Log
+  tab is marked when the log has news. On a tall phone the spare height
+  goes above everything, where a thumb does not reach. The pane is framed
+  in the look's own style: the Modern look's wooden bars (in the frame's
+  tone wherever the party is), or 1988's blue with its white line. Away
+  from play - the title, the story, a picture - and on a phone held
+  sideways, the screen is shown whole.
 - **Tap to walk and act.** A tap on a square beside the party steps there,
   or does what walking into it does: opens the door, talks to the
   townsman, strikes the foe, searches the chest. A tap further off walks
@@ -34,26 +44,36 @@ finger on the game itself rather than a drawn controller.
   finger is down the way is marked over the map, a dot on each square and
   a bracket on the last, gold to walk there, blue to talk, red to fight,
   grey where there is no way; slide the finger to choose another square,
-  and lift it to go, the marks shrinking as the party walks. Hold a finger
-  still to walk the way it points. Tap the party for what there is to do
-  here.
+  and lift it to go, the marks shrinking as the party walks. **Hold** a
+  finger down (a thumb that wavers is still holding, and a finger slid and
+  rested holds anew): the party walks toward it for as long as it stays
+  down, round walls and whatever is in the way, the way marked as it goes;
+  slide it to steer, lift it to stop. Held, the party opens a door it
+  comes to but walks into no one - talking and fighting are a tap's. Tap
+  the party for what there is to do here.
 - **Fights**: tap a foe your weapon reaches to strike or shoot it, or any
   square to step toward it; where a crosshair is up, tap what to aim at.
 - **Dungeons**: tap the view's left or right third to turn, its middle to
   step ahead, its foot to step back.
 - **Menus**: tap a line to choose it (the bar follows the finger, and the
-  line is chosen as it lifts); swipe a long list for a page; tap outside a
-  box to back out. Drag up and down on a number to dial it. Where a member
-  is asked for, tap their line in the panel; where a way is asked, tap the
+  line is chosen as it lifts). A list too long to show whole moves with
+  the thumb as a phone's lists do, and glides on after a flick; lifting
+  after it has moved chooses nothing. Tap outside a box to back out. Drag up and down on a number to dial it. Where a member
+  is asked for, tap their line in the panel (or step to them with the bar's
+  arrows and Choose); where a way is asked, tap the
   square. At the gypsy's bowls, tap a side to walk to its bowl, and tap it
   again (or Choose) to give that answer.
-- **The touch bar** keeps backing out at the left and the button that
-  chooses or goes on at the right (at the foot, where the buttons stand
-  in a column beside the panels).
-  It holds what the finger cannot point at, named for what each does
-  where you are: the Pause menu, Pass, Cast, Attack and Act at the prompt;
-  Back, up, down and Choose in a list; the dial's steps; the aim's next
-  target and Fire.
+- **The touch bar** is for one thumb: the button that acts, chooses or
+  goes on stands at the thumb's side, set in a little from the edge, and
+  backing out at the other. It is for the left hand as it comes; Settings,
+  **Buttons: Right hand**, turns it the other way about. It holds what the
+  finger cannot point at, named for what each does where you are: Act,
+  Pass, Cast and Attack at the prompt; OK, up, down and Back in a list;
+  the dial's steps; the aim's next target and Fire. Its buttons and the
+  tabs take the colours of the frame round the map (blue in a fight, or
+  1988's blue and white), their words as large as the log's, with
+  symbols drawn in the game's own square pixels for the arrows, the Pause
+  menu and Attack's sword.
 
 The code is in `web/src/ui/presentation.ts` (where the screen goes),
 `web/src/ui/directTouch.ts` (what a tap means) and

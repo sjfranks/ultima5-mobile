@@ -232,13 +232,12 @@ export class Game {
   } | null = null;
   /** The keys a tap stands for (io.ts TOUCH), typed at the next prompt that reads the keyboard. */
   touchKeys: number[] = [];
-  /** The line a tap picked (io.ts TOUCH_PICK); `touchPickGo`, chosen (the finger lifted on it) rather than only barred. */
-  touchPick = -1;
-  touchPickGo = false;
-  /** The square a tap aimed at (io.ts TOUCH_AT), in the view's squares. */
-  touchAt: { x: number; y: number } | null = null;
   /** The title's menu while it is up (intro.ts menu): where each line lies, in EGA pixels, for a tap. */
   titleRows: { i: number; r: [number, number, number, number] }[] | null = null;
+  /** Whether the title's lines lie side by side (Lady or Sir, the gypsy's bowls): stepped through left and right. */
+  titleAcross = false;
+  /** The gypsy's question as 1988's look asks it, A or B in the words: answered by the touch bar's two buttons. */
+  touchAnswers = false;
   /** A way is being asked (input.ts selectDirection) - 'here' where the square of whoever acts answers it too. */
   askingWay: '' | 'way' | 'here' = '';
   /** A member is being chosen (input.ts selectMember): a tap on their line in the panel picks them. */

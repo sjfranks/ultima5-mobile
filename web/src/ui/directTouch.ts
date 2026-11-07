@@ -18,14 +18,14 @@
  * - Anything else the game waits on, a tap goes on (A).
  *
  * Commands the finger cannot point at - Cast, Attack, Pass, the Pause menu - are the touch bar's (touchBar.ts).
- * Everything goes in as the controller's buttons and keys, or the touch codes (io.ts TOUCH, TOUCH_PICK, TOUCH_AT).
+ * Everything goes in as the controller's buttons and keys, or the touch codes (io.ts TOUCH, touchPick, touchAt).
  */
 
 import { canEnter } from '../game/actors.ts';
 import { arenaFree, combatantAt, onMonsterSide, snapTargets } from '../game/combat.ts';
 import { byCompass } from '../game/dungeonMap.ts';
 import { CF, type Game } from '../game/game.ts';
-import { K, Pad, TOUCH, TOUCH_AT, TOUCH_PICK } from '../game/io.ts';
+import { K, Pad, TOUCH, touchAt, touchPick } from '../game/io.ts';
 import type { Screen } from './screen.ts';
 import { cancelsTouch } from './touch.ts';
 
@@ -48,10 +48,11 @@ const DIAL_TEN_PX = 28;
 const WALK_STEPS = 24;
 
 /** What the game waits on, as a tap reads it. */
-export type TouchMode = 'busy' | 'title' | 'list' | 'dial' | 'aim' | 'member' | 'way' | 'command' | 'wait';
+export type TouchMode = 'busy' | 'answers' | 'title' | 'list' | 'dial' | 'aim' | 'member' | 'way' | 'command' | 'wait';
 
 /** What the game is waiting on now, as a tap reads it. */
 export function touchMode(g: Game, screen: Pick<Screen, 'waiting'>): TouchMode {
+  if (g.touchAnswers) return 'answers';
   if (g.titleRows) return 'title';
   // Under sail the ship goes on by itself, the game looking for a key as it does (outdoors.ts nextCommand).
   if (g.s.sailing !== 0 && g.inPlay && g.outdoors && !g.menuShown && !g.commandPrompt && !screen.waiting) return 'command';
@@ -208,9 +209,7 @@ export class DirectTouch {
   }
 
   private pick(i: number, go: boolean): void {
-    this.g.touchPick = i;
-    this.g.touchPickGo = go;
-    this.key(TOUCH_PICK);
+    this.key(touchPick(i, go));
   }
 
   // --- The finger ------------------------------------------------------------------
@@ -413,8 +412,7 @@ export class DirectTouch {
         return;
       case 'aim':
         if (!square) return;
-        g.touchAt = square;
-        return this.key(TOUCH_AT);
+        return this.key(touchAt(square.x, square.y));
       case 'member': {
         // Their line in the panel: the panel's first row is the first member's.
         if (part !== 'stats' && part !== 'screen') return;

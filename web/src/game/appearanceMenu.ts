@@ -12,7 +12,7 @@ import { addressedAsLady, type Appearance, FIGURES, HAIR, HUES, randomAppearance
 import type { Game } from './game.ts';
 import { asPad } from './input.ts';
 import { drawScene, SCENE_MAP, titleBanner, VIEW_SCENE } from './intro.ts';
-import { K, Pad, TOUCH_PICK } from './io.ts';
+import { K, Pad, pickOf } from './io.ts';
 import { box, framedBox, menuSound } from './menu.ts';
 import { T } from './tiles.ts';
 import { groundAmong, isGround } from './world.ts';
@@ -241,12 +241,13 @@ export async function chooseAppearance(
     for (;;) {
       draw();
       let k = asPad(g, await g.p.waitKey(idle));
-      if (k === TOUCH_PICK) {
-        if (g.touchPick >= 0 && g.touchPick < rows.count && g.touchPick !== at) {
-          at = g.touchPick;
+      const pick = pickOf(k);
+      if (pick) {
+        if (pick.i < rows.count && pick.i !== at) {
+          at = pick.i;
           menuSound(g, 'move');
         }
-        k = g.touchPickGo ? Pad.A : 0;
+        k = pick.go ? Pad.A : 0;
       }
       copyNote = COPY_LABEL;
       if (k === K.Up || k === K.Down) {

@@ -112,70 +112,79 @@ export class TouchBar {
     this.update();
   }
 
-  /** The buttons for where the game is now. */
+  /**
+   * The buttons for where the game is now, in reading order: backing out first (at the left, or the top of a column)
+   * and what goes on or chooses last (at the right, or the foot of a column, under the thumb).
+   */
   private buttons(): Button[] {
     const g = this.g;
     if (this.options.mapShown())
       return [
+        { label: 'Close', code: Pad.B },
         { label: 'Other map', code: Pad.X },
         { label: 'Party', code: Pad.Y },
-        { label: 'Close', code: Pad.B, main: true },
       ];
     const mode = touchMode(g, this.screen);
     const pause: Button = { label: '\u2261', code: Pad.Start, icon: true };
+    const choose: Button = { label: 'Choose', code: Pad.A, main: true };
     switch (mode) {
-      case 'title':
-        // The title's lines are small on an upright phone: stepped through here as well as tapped.
+      case 'answers':
+        // The gypsy's question as 1988's look asks it: its two answers, A and B, as typed.
         return [
-          { icon: true, label: '\u25b2', code: K.Up },
-          { icon: true, label: '\u25bc', code: K.Down },
-          { label: 'Choose', code: Pad.A, main: true },
+          { label: 'Answer A', code: 0x41, main: true },
+          { label: 'Answer B', code: 0x42, main: true },
         ];
+      case 'title':
+        // The title's lines are small on an upright phone: stepped through here as well as tapped - up and down, or
+        // left and right where they stand side by side (Lady or Sir, the gypsy's bowls).
+        return g.titleAcross
+          ? [{ icon: true, label: '\u25c0', code: K.Left }, { icon: true, label: '\u25b6', code: K.Right }, choose]
+          : [{ icon: true, label: '\u25b2', code: K.Up }, { icon: true, label: '\u25bc', code: K.Down }, choose];
       case 'busy':
         return [];
       case 'command': {
         const fight = g.commandPrompt === 'combat';
         const fire = !fight && firesHere(g);
         return [
-          { label: 'Act', code: Pad.A, main: true },
+          pause,
+          { label: fight && g.s.battleWon !== 0 ? 'Leave' : 'Pass', code: Pad.B },
           { label: 'Cast', code: Pad.Y },
           { label: fire ? 'Fire' : 'Attack', code: Pad.X },
-          { label: fight && g.s.battleWon !== 0 ? 'Leave' : 'Pass', code: Pad.B },
-          pause,
+          { label: 'Act', code: Pad.A, main: true },
         ];
       }
       case 'list':
         // A line is tapped to choose it; the bar steps through them too (and a swipe turns a long list's page).
         return [
+          { label: 'Back', code: Pad.B },
           { icon: true, label: '\u25b2', code: K.Up },
           { icon: true, label: '\u25bc', code: K.Down },
-          { label: 'Choose', code: Pad.A },
-          { label: 'Back', code: Pad.B, main: true },
+          choose,
         ];
       case 'dial':
         return [
+          { label: 'Back', code: Pad.B },
           { label: '-10', code: K.Left },
           { label: '-1', code: K.Down },
           { label: '+1', code: K.Up },
           { label: '+10', code: K.Right },
           { label: 'OK', code: Pad.A, main: true },
-          { label: 'Back', code: Pad.B },
         ];
       case 'aim':
         return [
+          { label: 'Cancel', code: Pad.B },
           { icon: true, label: '\u25c0', code: Pad.LB },
           { icon: true, label: '\u25b6', code: Pad.RB },
           { label: 'Fire', code: Pad.A, main: true },
-          { label: 'Cancel', code: Pad.B },
         ];
       case 'member':
         return [{ label: 'Cancel', code: Pad.B }];
       case 'way':
-        return [...(g.askingWay === 'here' ? [{ label: 'Here', code: K.Enter }] : []), { label: 'Cancel', code: Pad.B, main: true }];
+        return [{ label: 'Cancel', code: Pad.B }, ...(g.askingWay === 'here' ? [{ label: 'Here', code: K.Enter, main: true }] : [])];
       case 'wait':
         return [
-          { label: 'Go on', code: Pad.A, main: true },
           { label: 'Back', code: Pad.B },
+          { label: 'Go on', code: Pad.A, main: true },
         ];
     }
   }

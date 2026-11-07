@@ -11,7 +11,7 @@ import { treasureLies } from './actors.ts';
 import { autoTitle, clearBorderTitle, borderTitle, drawVitals, invertMember, markTurn, updateFrame } from './frame.ts';
 import { liftDungeonMap } from './dungeonMap.ts';
 import { Game } from './game.ts';
-import { K, LOST_FOCUS, Pad, TOUCH, TOUCH_AT, TURN_LEFT, TURN_RIGHT } from './io.ts';
+import { atOf, K, LOST_FOCUS, Pad, TOUCH, TURN_LEFT, TURN_RIGHT } from './io.ts';
 import { Status } from './save.ts';
 import { warmAhead } from './world.ts';
 
@@ -369,7 +369,6 @@ export async function getChar(g: Game, idle?: () => void, literal = false, lette
         return Pad.X;
       case Pad.LB:
       case Pad.RB:
-      case TOUCH_AT: // a square tapped where the crosshair is up (combat.ts aim)
         if (shoulders) return k;
         break;
       case Pad.Y: {
@@ -379,6 +378,9 @@ export async function getChar(g: Game, idle?: () => void, literal = false, lette
         if (word.length !== 0) return upper(word[0]); // one letter is the answer; the rest of a word is nobody's
         break;
       }
+      default:
+        // A square tapped where the crosshair is up (io.ts touchAt, combat.ts aim).
+        if (shoulders && atOf(k)) return k;
     }
   }
 }

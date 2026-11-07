@@ -18,7 +18,7 @@ import { drawTextCard } from './shopCard.ts';
 import { CF, Game } from './game.ts';
 import { menuKey, PAUSED } from './input.ts';
 import { besideHarpsichord } from './harpsichord.ts';
-import { HARPSICHORD, K, Pad, SAVE_NOW, TOUCH_PICK } from './io.ts';
+import { HARPSICHORD, K, Pad, pickOf, SAVE_NOW } from './io.ts';
 import { somethingBeside } from './items.ts';
 import { itemCounts, nextHeld, unloaded } from './zstats.ts';
 import { holdFullPanel } from './layout.ts';
@@ -850,16 +850,17 @@ export async function choose(g: Game, title: string, items: Item[], start = 0, b
       return next >= 0 && next < items.length ? next : at;
     };
     const long = items.length > rows;
-    if (k === TOUCH_PICK) {
+    const pick = pickOf(k);
+    if (pick) {
       // A line tapped (ui/directTouch.ts): the bar on it while the finger is down, chosen as it lifts there.
-      const i = g.touchPick;
-      if (i < 0 || i >= items.length) continue;
+      const i = pick.i;
+      if (i >= items.length) continue;
       const restable = items[i].enabled !== false || items[i].rest === true;
       if (restable && i !== at) {
         at = i;
         menuSound(g, 'move');
       }
-      if (g.touchPickGo && items[i].enabled !== false) {
+      if (pick.go && items[i].enabled !== false) {
         at = i;
         result = i;
         break;
@@ -969,12 +970,13 @@ export async function chooseTwoColumns(g: Game, title: string, items: Item[], st
       frame(); // the Pause menu was over it
       continue;
     }
-    if (k === TOUCH_PICK) {
-      const i = g.touchPick;
-      if (i < 0 || i >= items.length) continue;
+    const pick = pickOf(k);
+    if (pick) {
+      const i = pick.i;
+      if (i >= items.length) continue;
       if (i !== at) menuSound(g, 'move');
       at = i;
-      if (g.touchPickGo && items[i].enabled !== false) {
+      if (pick.go && items[i].enabled !== false) {
         result = i;
         break;
       }

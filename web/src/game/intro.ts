@@ -16,7 +16,7 @@ import { Game } from './game.ts';
 import { menuSound, titleShown } from './menu.ts';
 import { asPad, upper } from './input.ts';
 import { addressedAsLady, customisable, DEFAULT_APPEARANCE } from './appearance.ts';
-import { K, Pad, TOUCH_PICK, type Place, type Dressing } from './io.ts';
+import { K, Pad, pickOf, type Place, type Dressing } from './io.ts';
 import { introTune, playTune, Tune } from './music.ts';
 import { Save } from './save.ts';
 import { characters, currentCharacter, localSave, restore, roomForCharacter, savedAvatar, savedDressing } from './storage.ts';
@@ -267,15 +267,17 @@ export async function askAddress(g: Game): Promise<number | null> {
     { i: 0, r: [w.left * 8, y - 4, w.left * 8 + half - 1, y + 11] },
     { i: 1, r: [w.left * 8 + half, y - 4, w.left * 8 + 2 * half - 1, y + 11] },
   ];
+  g.titleAcross = true;
   try {
     for (;;) {
       show();
       const k = upper(asPad(g, await g.p.waitKey(() => g.titleIdle?.())));
-      if (k === TOUCH_PICK) {
-        if (g.touchPick === 0 || g.touchPick === 1) {
-          if (chosen !== g.touchPick) menuSound(g, 'move');
-          chosen = g.touchPick;
-          if (g.touchPickGo) {
+      const pick = pickOf(k);
+      if (pick) {
+        if (pick.i === 0 || pick.i === 1) {
+          if (chosen !== pick.i) menuSound(g, 'move');
+          chosen = pick.i;
+          if (pick.go) {
             taken = true;
             break;
           }
@@ -297,6 +299,7 @@ export async function askAddress(g: Game): Promise<number | null> {
     }
   } finally {
     g.titleRows = null;
+    g.titleAcross = false;
     back?.();
     t.select(was);
   }
@@ -389,9 +392,10 @@ export async function askName(g: Game, max: number, at: number, start = ''): Pro
     let k = typed === K.Enter && g.options.input === 'controller' ? Pad.A : typed;
     const list = items();
     // A line tapped (ui/directTouch.ts): the bar on it, pressed as the finger lifts there.
-    if (k === TOUCH_PICK) {
-      if (g.touchPick >= 0 && g.touchPick < list.length) sel = g.touchPick;
-      k = g.touchPickGo ? Pad.A : 0;
+    const pick = pickOf(k);
+    if (pick) {
+      if (pick.i < list.length) sel = pick.i;
+      k = pick.go ? Pad.A : 0;
     }
     if (k === K.Up) sel = (sel + list.length - 1) % list.length;
     else if (k === K.Down) sel = (sel + 1) % list.length;
@@ -1190,12 +1194,18 @@ export class Intro {
     } else {
       this.proseText(words);
       fx.transfer(1, 0, 0, 0, 319, 199);
-      do {
-        k = upper(await this.anyKey());
-        // A controller's A and B answer A and B, and so do the keys that stand for them (Z and X).
-        if (k === Pad.A || k === 0x5a) k = 0x41;
-        else if (k === Pad.B || k === 0x58) k = 0x42;
-      } while (k !== 0x41 && k !== 0x42);
+      // On a touch screen, the touch bar's two answers (ui/touchBar.ts): a tap on the page itself answers nothing.
+      g.touchAnswers = true;
+      try {
+        do {
+          k = upper(await this.anyKey());
+          // A controller's A and B answer A and B, and so do the keys that stand for them (Z and X).
+          if (k === Pad.A || k === 0x5a) k = 0x41;
+          else if (k === Pad.B || k === 0x58) k = 0x42;
+        } while (k !== 0x41 && k !== 0x42);
+      } finally {
+        g.touchAnswers = false;
+      }
     }
     if (k !== first) [a, b] = [b, a];
     this.stats.int += g.data.bytes(0x5164, 8)[a];
@@ -1215,9 +1225,30 @@ export class Intro {
     let x = STAGE.centre;
     let lit = -1;
     let taken = false;
+    // A tap (ui/directTouch.ts): either half of the stage is its bowl's - the first tap walks the Avatar there, a
+    // tap there again (or the touch bar's Choose) takes it, as the d-pad and A do: an answer is not given by accident.
+    g.titleRows = [
+      { i: 0, r: [0, 0, 159, 199] },
+      { i: 1, r: [160, 0, 319, 199] },
+    ];
+    g.titleAcross = true;
+    /** Whether the finger came down on the bowl already walked to: lifted there, it takes it. */
+    let armed = false;
     for (;;) {
       const raw = g.p.pollKey();
-      const k = raw ? asPad(g, raw) : 0;
+      let k = raw ? asPad(g, raw) : 0;
+      const pick = pickOf(k);
+      if (pick) {
+        const i = pick.i;
+        if (i === 0 || i === 1) {
+          if (!pick.go) {
+            armed = side === i;
+            side = i;
+          } else if (armed && side === i) taken = true;
+          else side = i;
+        }
+        k = 0;
+      }
       if (k === K.Left) side = 0;
       else if (k === K.Right) side = 1;
       else if ((k === Pad.A || k === K.Enter || upper(k) === 0x5a) && side >= 0) taken = true; // Z, as A on a keyboard
@@ -1233,6 +1264,8 @@ export class Intro {
       if (taken && lit === side) break;
       await g.p.sleep(33);
     }
+    g.titleRows = null;
+    g.titleAcross = false;
     // A moment in the fire before the next question.
     for (let i = 0; i < 14; i++) {
       const now = performance.now();
@@ -1709,18 +1742,19 @@ export class Intro {
         }
         // An update come while the title waits: its box at once (the loop's head), not after the next key.
         if (key === 0 && this.updateDue()) continue;
-        switch (key) {
-          case TOUCH_PICK: {
-            // A line tapped (ui/directTouch.ts): the bar on it, and chosen as the finger lifts there.
-            const i = g.touchPick;
-            key = 0;
-            if (i < 0 || i >= keys.length || (i === 0 && this.noSave)) break;
-            if (i !== choice) menuSound(g, 'move');
-            choice = i;
+        // A line tapped (ui/directTouch.ts): the bar on it, and chosen as the finger lifts there.
+        const pick = pickOf(key);
+        if (pick) {
+          key = 0;
+          if (pick.i < keys.length && !(pick.i === 0 && this.noSave)) {
+            if (pick.i !== choice) menuSound(g, 'move');
+            choice = pick.i;
             this.menu(choice);
-            if (g.touchPickGo) key = keys.charCodeAt(choice);
-            break;
+            if (pick.go) key = keys.charCodeAt(choice);
           }
+          continue;
+        }
+        switch (key) {
           case K.Left:
           case K.Up:
             choice = choice === 0 ? keys.length - 1 : choice - 1;

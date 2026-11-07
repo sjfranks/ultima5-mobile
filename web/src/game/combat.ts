@@ -22,7 +22,7 @@ import { CF, Game } from './game.ts';
 import { bumpCommand, corpseBlocks, foesAbout, isLoot, NOT_NOW } from './bumpAct.ts';
 import { bumpInto, getChar, getCharYN, getCommandKey, getHours, queueKeys, selectDirection, upOrDown } from './input.ts';
 import { restOutcome, restTimer } from './rest.ts';
-import { K, Pad, TOUCH_AT } from './io.ts';
+import { atOf, K, Pad } from './io.ts';
 import { earnedLevel, Status } from './save.ts';
 import { gameDay, passTime } from './time.ts';
 import {
@@ -1495,10 +1495,9 @@ export async function aim(g: Game, i: number, range: number, friend = false): Pr
     updateFrame(g);
     let k = await getChar(g, undefined, false, false, true);
     // A square tapped (ui/directTouch.ts): aimed at and loosed, where it is in reach and not the one who aims.
-    if (k === TOUCH_AT) {
-      const at = g.touchAt;
-      g.touchAt = null;
-      if (!at || at.x < 0 || at.y < 0 || at.x > 0xa || at.y > 0xa) continue;
+    const at = atOf(k);
+    if (at) {
+      if (at.x < 0 || at.y < 0 || at.x > 0xa || at.y > 0xa) continue;
       if (distance(at.x, at.y, g.combat[i].x, g.combat[i].y) > range) continue;
       if (at.x === g.combat[i].x && at.y === g.combat[i].y) continue;
       s.crossX = at.x;

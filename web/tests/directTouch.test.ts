@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { arrowToward, firstStep, touchMode } from '../src/ui/directTouch.ts';
-import { K } from '../src/game/io.ts';
+import { atOf, K, pickOf, touchAt, touchPick } from '../src/game/io.ts';
 import type { Game } from '../src/game/game.ts';
 
 /** The view's squares as a picture: '#' the party cannot stand on, anything else it can. */
@@ -79,9 +79,26 @@ describe('direct touch', () => {
     expect(firstStep(1, 9, open, 1, 1)).toBe(K.Down);
   });
 
+  it('carries each tap in its own code, so taps queued before the game reads them are read as they were', () => {
+    // A finger down on line 3, then lifted there: two codes, each saying which it was.
+    const down = touchPick(3, false);
+    const up = touchPick(3, true);
+    expect(pickOf(down)).toEqual({ i: 3, go: false });
+    expect(pickOf(up)).toEqual({ i: 3, go: true });
+    expect(atOf(touchAt(7, 10))).toEqual({ x: 7, y: 10 });
+    // No key or button is either.
+    for (const k of [0, K.Enter, 0x41, 0x100, 0x1f4, 0x1ff]) {
+      expect(pickOf(k)).toBeNull();
+      expect(atOf(k)).toBeNull();
+    }
+    expect(atOf(up)).toBeNull();
+    expect(pickOf(touchAt(0, 0))).toBeNull();
+  });
+
   it('reads what the game waits on', () => {
     const g = {
       titleRows: null,
+      touchAnswers: false,
       s: { sailing: 0, crosshair: 0 },
       inPlay: true,
       outdoors: false,
@@ -105,5 +122,7 @@ describe('direct touch', () => {
     expect(touchMode(g, waiting)).toBe('way');
     Object.assign(g, { titleRows: [] });
     expect(touchMode(g, { waiting: false })).toBe('title');
+    Object.assign(g, { touchAnswers: true });
+    expect(touchMode(g, { waiting: false })).toBe('answers');
   });
 });

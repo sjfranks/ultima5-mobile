@@ -41,10 +41,15 @@ finger on the game itself rather than a drawn controller.
   line is chosen as it lifts); swipe a long list for a page; tap outside a
   box to back out. Drag up and down on a number to dial it. Where a member
   is asked for, tap their line in the panel; where a way is asked, tap the
-  square.
-- **The touch bar** below holds the rest, named for what each does where
-  you are: Act, Cast, Attack, Pass and the Pause menu at the prompt; the
-  dial's steps; the aim's next target and Fire.
+  square. At the gypsy's bowls, tap a side to walk to its bowl, and tap it
+  again (or Choose) to give that answer.
+- **The touch bar** keeps backing out at the left and the button that
+  chooses or goes on at the right (at the foot, where the buttons stand
+  in a column beside the panels).
+  It holds what the finger cannot point at, named for what each does
+  where you are: the Pause menu, Pass, Cast, Attack and Act at the prompt;
+  Back, up, down and Choose in a list; the dial's steps; the aim's next
+  target and Fire.
 
 The code is in `web/src/ui/presentation.ts` (where the screen goes),
 `web/src/ui/directTouch.ts` (what a tap means) and

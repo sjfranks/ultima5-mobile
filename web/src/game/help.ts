@@ -179,6 +179,52 @@ const CONTROLLER: Page[] = [
   },
 ];
 
+/** Touch, direct (the mobile fork's: ui/directTouch.ts, ui/touchBar.ts), for a player whose last press was a finger's. */
+const TOUCH: Page[] = [
+  {
+    title: 'Touch',
+    lines: [
+      'Tap a square beside',
+      '  the party: step, or',
+      '  open, talk to or',
+      '  fight what is there',
+      'Tap further off:',
+      '  walk there, and',
+      '  into what is there',
+      'Finger down: its way',
+      '  marked; slide it,',
+      '  lift to go. Gold:',
+      '  walk, blue: talk,',
+      '  red: fight',
+      'Hold it still: walk',
+      '  the way it points',
+      'Tap the party: what',
+      '  there is to do',
+      '  here (Act)',
+    ],
+  },
+  {
+    title: 'Touch',
+    lines: [
+      'A list: tap a line.',
+      '  Slide to another',
+      '  and lift to choose',
+      '  it; swipe a long',
+      '  one for a page;',
+      '  tap outside: back',
+      'A number: drag up',
+      '  or down on it',
+      'A fight: tap a foe',
+      '  in reach to strike',
+      '  it, a square to',
+      '  step toward it',
+      'The bar: Act, Cast,',
+      '  Attack, Pass and',
+      '  the Pause menu',
+    ],
+  },
+];
+
 const LETTERS: Page[] = [
   {
     title: 'Keys',
@@ -247,6 +293,18 @@ function dungeonPage(g: Game): Page {
     ? ['Map, in the menu:', ' the whole level, the', ' d-pad walking by', ' the compass; Map', ' again for the view.']
     : ['The map over the', 'view: Settings,', 'Dungeon map.'];
   const walk = ['Up: step ahead', 'Down: step back', 'Left, right: turn', 'Enter: turn about', 'I: light a torch'];
+  if (g.lastSource === 'touch')
+    return {
+      title: 'Dungeons',
+      lines: [
+        'Tap the view: its',
+        ' left or right third',
+        ' to turn, its middle',
+        ' to step ahead, its',
+        ' foot to step back',
+        ...(standard ? ['', 'Map, under Act: the', ' whole level, tapped', ' as a town is; Map', ' again for the view'] : []),
+      ],
+    };
   // The right stick turns where the party stands, in either view (ui/gamepad.ts).
   return { title: 'Dungeons', lines: pad ? [...map, '', 'Right stick: turn'] : standard ? walk : [...walk, '', ...map] };
 }
@@ -298,5 +356,6 @@ function partyPage(g: Game): Page {
 
 /** The Help pages for the input set and the look in use. */
 export function helpPages(g: Game): Page[] {
-  return [...(g.options.input === 'controller' ? CONTROLLER : LETTERS), dungeonPage(g), partyPage(g)];
+  const input = g.lastSource === 'touch' ? TOUCH : g.options.input === 'controller' ? CONTROLLER : LETTERS;
+  return [...input, dungeonPage(g), partyPage(g)];
 }

@@ -42,6 +42,21 @@ import type { Tiles } from '../game/settings.ts';
 import type { StandardArt } from './standardArt.ts';
 import { setChoice, setProse, setSteps, type Measure, type Run, type RunFace } from './storyText.ts';
 import { Text, type TextTarget } from './text.ts';
+import { NO_INSETS, present, toCanvas, toScreen, type Blit, type Insets, type Part, type Presentation, type Rect } from './presentation.ts';
+import type { WayShown } from './directTouch.ts';
+
+/** A tapped way's marks (drawWay): the dots, their dark rim, and the end's bracket by what happens there. */
+const WAY_DOT = '#fff1cc';
+const WAY_RIM = 'rgba(14, 8, 2, 0.7)';
+const WAY_COLOURS: Record<WayShown['kind'], string> = {
+  walk: '#ffe08a',
+  into: '#ffe08a',
+  talk: '#8fd8ff',
+  foe: '#ff6a52',
+  none: '#9c968c',
+};
+/** A square of the view, in EGA pixels. */
+const TILE = 16;
 
 /** The DOS timer's tick; the game animated about once per tick while waiting for a key. */
 export const TICK_MS = 1000 / 18.2;
@@ -150,6 +165,24 @@ export function dosKey(e: KeyboardEvent): number {
   return 0;
 }
 
+/** The probe the safe area is read from (an element padded by env(safe-area-inset-*)), made once. */
+let insetProbe: HTMLDivElement | null = null;
+
+/** The display's safe area - notches, rounded corners, the home indicator - in canvas pixels (`dpr` to a CSS pixel). */
+export function safeArea(dpr: number): Insets {
+  if (typeof document === 'undefined') return NO_INSETS;
+  if (!insetProbe) {
+    insetProbe = document.createElement('div');
+    insetProbe.style.cssText =
+      'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+      'padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);';
+    document.body.appendChild(insetProbe);
+  }
+  const cs = getComputedStyle(insetProbe);
+  const px = (v: string): number => Math.round((parseFloat(v) || 0) * dpr);
+  return { top: px(cs.paddingTop), right: px(cs.paddingRight), bottom: px(cs.paddingBottom), left: px(cs.paddingLeft) };
+}
+
 class Silence implements Sound {
   async pulse(): Promise<void> {}
   async noise(): Promise<void> {}
@@ -218,6 +251,7 @@ export class Screen implements Platform {
       const r = canvas.getBoundingClientRect();
       if (r.width < 1 || r.height < 1) return;
       this.wanted = [Math.round(r.width * devicePixelRatio), Math.round(r.height * devicePixelRatio)];
+      this.insets = safeArea(devicePixelRatio);
       this.fb.dirty = true;
     };
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(fit).observe(canvas);
@@ -473,6 +507,135 @@ export class Screen implements Platform {
   /** Whether frames are asked for only when there is something to show (Battery saver: pageHooks.ts), not at every refresh. */
   lazyFrames: () => boolean = () => false;
 
+  /** The way a tap will walk, or is walking, to be marked over the map (directTouch.ts); null for none. */
+  wayShown: (() => WayShown | null) | null = null;
+
+  /**
+   * A tapped way over the map, at the display's size, cut to the map's square: a dot on each square it steps onto (the
+   * first, the step to be taken next, the larger), and the square it ends on bracketed in the colour of what happens
+   * there - walked to, someone talked to, a foe fought, something walked into; grey and crossed where there is no way.
+   * `lag`: the map's glide behind where it is going (viewGlide.ts), which the marks keep to.
+   */
+  private drawWay(ctx: CanvasRenderingContext2D, b: Blit, way: WayShown, lag: { x: number; y: number }): void {
+    const f = b.dw / b.sw;
+    const X = (ex: number): number => b.dx + (ex - b.sx) * f;
+    const Y = (ey: number): number => b.dy + (ey - b.sy) * f;
+    const sq = TILE * f;
+    const at = (p: { x: number; y: number }): [number, number] => [X(TILE_X + (p.x - lag.x) * TILE), Y(TILE_Y + (p.y - lag.y) * TILE)];
+    const rim = Math.max(1, sq * 0.035);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.rect(X(TILE_X), Y(TILE_Y), 11 * sq, 11 * sq);
+    ctx.clip();
+    way.steps.forEach((p, i) => {
+      const [x, y] = at(p);
+      const r = sq * (i === 0 ? 0.125 : 0.09);
+      ctx.beginPath();
+      ctx.arc(x + sq / 2, y + sq / 2, r + rim, 0, Math.PI * 2);
+      ctx.fillStyle = WAY_RIM;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x + sq / 2, y + sq / 2, r, 0, Math.PI * 2);
+      ctx.fillStyle = WAY_DOT;
+      ctx.fill();
+    });
+    const [x, y] = at(way.end);
+    const inset = sq * 0.07;
+    const len = sq * 0.3;
+    const [x1, y1, x2, y2] = [x + inset, y + inset, x + sq - inset, y + sq - inset];
+    const corners = new Path2D();
+    for (const [cx, cy, dx, dy] of [
+      [x1, y1, 1, 1],
+      [x2, y1, -1, 1],
+      [x2, y2, -1, -1],
+      [x1, y2, 1, -1],
+    ] as const) {
+      corners.moveTo(cx + dx * len, cy);
+      corners.lineTo(cx, cy);
+      corners.lineTo(cx, cy + dy * len);
+    }
+    if (way.kind === 'none') {
+      const m = sq * 0.32;
+      corners.moveTo(x + m, y + m);
+      corners.lineTo(x + sq - m, y + sq - m);
+      corners.moveTo(x + sq - m, y + m);
+      corners.lineTo(x + m, y + sq - m);
+    }
+    const w = Math.max(2, sq * 0.08);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = WAY_RIM;
+    ctx.lineWidth = w + 2 * rim;
+    ctx.stroke(corners);
+    ctx.strokeStyle = WAY_COLOURS[way.kind];
+    ctx.lineWidth = w;
+    ctx.stroke(corners);
+    ctx.restore();
+  }
+
+  /** Whether the game is waiting for a key now (a tap is read for what it waits on: directTouch.ts). */
+  get waiting(): boolean {
+    return this.waiter !== null;
+  }
+
+  /** Where the screen was last put on the canvas (presentation.ts); null until first shown. */
+  presented: Presentation | null = null;
+  /** Called when where the screen goes changes (the touch bar follows it: touchBar.ts). */
+  onPresent: ((p: Presentation) => void) | null = null;
+  /** The touch bar's least depth across the foot (or breadth at the side), in canvas pixels; 0 for none. */
+  barDepth: () => number = () => 0;
+  /** The display's safe area (notches, rounded corners, the home indicator), in canvas pixels. */
+  insets: Insets = NO_INSETS;
+
+  /** The canvas's pixels for a point of the page (a tap), as the screen's EGA pixels and the part shown there; or null. */
+  pointAt(clientX: number, clientY: number): { x: number; y: number; part: Part } | null {
+    const p = this.presented;
+    if (!p) return null;
+    const r = this.canvas.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return null;
+    return toScreen(p, ((clientX - r.left) * this.canvas.width) / r.width, ((clientY - r.top) * this.canvas.height) / r.height);
+  }
+
+  /** A rectangle of the screen (EGA pixels) on the page, in CSS pixels; null where it is not shown. */
+  rectOnPage(x1: number, y1: number, x2: number, y2: number): Rect | null {
+    const p = this.presented;
+    const c = p && toCanvas(p, x1, y1, x2, y2);
+    if (!c) return null;
+    const r = this.canvas.getBoundingClientRect();
+    const k = r.width / this.canvas.width;
+    return { x: r.left + c.x * k, y: r.top + c.y * k, w: c.w * k, h: c.h * k };
+  }
+
+  /** Whether the game's own frame is up - the map, the party and the log, in play - rather than the title or a scene. */
+  playFrame(): boolean {
+    return this.inGame && this.fb.chromeFrom === 0 && this.fb.chromeAlso.length === 0;
+  }
+
+  /**
+   * The EGA row the party's panel gives way to the log at: under the Modern look's own panel (seven rows and its band,
+   * frame.ts compactPanel) 72; under 1988's, and the Modern look's at its full height (layout.ts), 88.
+   */
+  private panelSplit(): number {
+    const stats = this.text.windows[1];
+    return stats && stats.bottom <= 7 ? 72 : 88;
+  }
+
+  /** The colour page grown by a whole `k`, for the sharpened smoothing (?scale=smooth). */
+  private grownBy(k: number): { canvas: HTMLCanvasElement; k: number } {
+    let g = this.grown;
+    if (g?.canvas.width !== HI_WIDTH * k) {
+      const made = document.createElement('canvas');
+      [made.width, made.height] = [HI_WIDTH * k, HI_HEIGHT * k];
+      g = this.grown = made.getContext('2d');
+    }
+    if (!g) return { canvas: this.base.canvas, k: 1 };
+    g.imageSmoothingEnabled = false;
+    g.drawImage(this.base.canvas, 0, 0, g.canvas.width, g.canvas.height);
+    return { canvas: g.canvas, k };
+  }
+
   /**
    * The colour page onto the canvas at the display's size, and page 0's story words over it at that size. Enlarged,
    * by the nearest pixel: every edge hard, a pixel of the art one display pixel wider than the next here and there
@@ -486,54 +649,78 @@ export class Screen implements Platform {
     if (c.width !== w || c.height !== h) [c.width, c.height] = [w, h];
     this.base.putImageData(this.image, 0, 0);
     const ctx = this.ctx;
-    const scale = w / HI_WIDTH;
-    const whole = (Math.abs(scale - Math.round(scale)) < 0.01 && scale >= 1) || (scale > 1 && !SMOOTH);
-    let from: HTMLCanvasElement = this.base.canvas;
-    if (!whole && scale > 1) {
-      const k = Math.ceil(scale);
-      let g = this.grown;
-      if (g?.canvas.width !== HI_WIDTH * k) {
-        const made = document.createElement('canvas');
-        [made.width, made.height] = [HI_WIDTH * k, HI_HEIGHT * k];
-        g = this.grown = made.getContext('2d');
-      }
-      if (g) {
-        g.imageSmoothingEnabled = false;
-        g.drawImage(from, 0, 0, g.canvas.width, g.canvas.height);
-        from = g.canvas;
-      }
-    }
+    // Where the screen goes (presentation.ts): whole, or in play on an upright screen taken apart.
+    const p = present(w, h, this.playFrame(), this.panelSplit(), this.insets, this.barDepth());
+    const was = this.presented;
+    this.presented = p;
+    if (!was || JSON.stringify(was) !== JSON.stringify(p)) this.onPresent?.(p);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, h);
     // The letters' cells are set from the alphabetic baseline (setLetter): set each frame, whatever drew last.
     ctx.textBaseline = 'alphabetic';
     ctx.textAlign = 'start';
-    ctx.imageSmoothingEnabled = !whole;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(from, 0, 0, w, h);
-    // The letters over their cells, then the marks the chrome carries, at the display's size.
+    for (const b of p.blits) {
+      // Canvas pixels to a colour-page pixel, in this blit.
+      const scale = b.dw / (b.sw * HI);
+      const whole = (Math.abs(scale - Math.round(scale)) < 0.01 && scale >= 1) || (scale > 1 && !SMOOTH);
+      const from = !whole && scale > 1 ? this.grownBy(Math.ceil(scale)) : { canvas: this.base.canvas, k: 1 };
+      const k = HI * from.k;
+      ctx.imageSmoothingEnabled = !whole;
+      ctx.drawImage(from.canvas, b.sx * k, b.sy * k, b.sw * k, b.sh * k, b.dx, b.dy, b.dw, b.dh);
+    }
+    // The letters over their cells, then the marks the chrome carries, at the display's size: each in the blit that
+    // shows its cell, cut to it.
     const letters: Letter[] = [...this.fb.lettersShown(), ...this.fb.revealing];
     const marks = this.fb.marksShown();
     if (letters.length || marks.length) {
-      const cell = GLYPH_SIDE * scale;
-      for (const l of letters) {
-        const [x, y] = [l.x * HI * scale, l.y * HI * scale];
-        const k = l.to ? l.k : 0;
-        if (k < 1) {
-          ctx.globalAlpha = (1 - k) * l.alpha;
-          this.setLetter(ctx, l, x, y, cell, l.colour);
+      for (const b of p.blits) {
+        const f = b.dw / b.sw; // canvas pixels to an EGA pixel
+        const cell = 8 * f;
+        const inside = (x: number, y: number): boolean => x + 4 >= b.sx && x + 4 < b.sx + b.sw && y + 4 >= b.sy && y + 4 < b.sy + b.sh;
+        const clipped = p.blits.length > 1;
+        if (clipped) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(b.dx, b.dy, b.dw, b.dh);
+          ctx.clip();
         }
-        if (l.to && k > 0) {
-          ctx.globalAlpha = k * l.alpha;
-          this.setLetter(ctx, l.to, x, y, cell, l.to.colour ?? l.colour);
+        for (const l of letters) {
+          if (!inside(l.x, l.y)) continue;
+          const [x, y] = [b.dx + (l.x - b.sx) * f, b.dy + (l.y - b.sy) * f];
+          const k = l.to ? l.k : 0;
+          if (k < 1) {
+            ctx.globalAlpha = (1 - k) * l.alpha;
+            this.setLetter(ctx, l, x, y, cell, l.colour);
+          }
+          if (l.to && k > 0) {
+            ctx.globalAlpha = k * l.alpha;
+            this.setLetter(ctx, l.to, x, y, cell, l.to.colour ?? l.colour);
+          }
         }
+        ctx.globalAlpha = 1;
+        for (const m of marks) {
+          if (!inside(m.column * 8, m.row * 8)) continue;
+          this.setLetter(ctx, m, b.dx + (m.column * 8 - b.sx) * f, b.dy + (m.row * 8 - b.sy) * f, cell, m.colour);
+        }
+        if (clipped) ctx.restore();
       }
-      ctx.globalAlpha = 1;
-      for (const m of marks) this.setLetter(ctx, m, m.column * GLYPH_SIDE * scale, m.row * GLYPH_SIDE * scale, cell, m.colour);
     }
-    if (this.harp) this.drawHarp(ctx, w, h, this.harp, performance.now());
+    // The harpsichord's keyboard, through the blit that shows the map (or the whole screen).
+    const over = p.blits.find((b) => b.part === 'view' || b.part === 'screen');
+    // A tapped way (directTouch.ts), over the map, under anything the game puts up over it.
+    const way = this.wayShown?.() ?? null;
+    if (way && over) this.drawWay(ctx, over, way, this.smoothMotion() ? this.viewGlide.cameraLag(performance.now()) : { x: 0, y: 0 });
+    if (this.harp && over) {
+      const f = over.dw / over.sw;
+      this.drawHarp(ctx, [f, f, over.dx - over.sx * f, over.dy - over.sy * f], this.harp, performance.now());
+    }
     const words = this.fb.words[0];
-    if (!words.length) return;
-    ctx.setTransform(scale, 0, 0, h / HI_HEIGHT, 0, 0);
+    if (!words.length || !over) return;
+    const scale = over.dw / over.sw / HI;
+    ctx.setTransform(scale, 0, 0, scale, over.dx - over.sx * HI * scale, over.dy - over.sy * HI * scale);
     ctx.textBaseline = 'alphabetic';
     for (const { run, alpha } of words) {
       if (alpha <= 0) continue;
@@ -565,12 +752,12 @@ export class Screen implements Platform {
    * player knows it; and each number played rising from its key and fading. The Standard look's in its lettering and
    * colours, the PC (1988) look's in the EGA's and IBM.CH's.
    */
-  private drawHarp(ctx: CanvasRenderingContext2D, w: number, h: number, v: HarpView, now: number): void {
+  private drawHarp(ctx: CanvasRenderingContext2D, [fx, fy, ox, oy]: [number, number, number, number], v: HarpView, now: number): void {
     const ega = this.look !== 'standard';
     // Its own transform, alignment and baseline, and the context's given back after: the baseline left at the top
     // dropped every letter drawn after it by most of a row.
     ctx.save();
-    ctx.setTransform(w / 320, 0, 0, h / 200, 0, 0);
+    ctx.setTransform(fx, 0, 0, fy, ox, oy);
     const KW = 10;
     const KH = 28;
     const kx = v.x + Math.floor((v.w - KW * 9) / 2);

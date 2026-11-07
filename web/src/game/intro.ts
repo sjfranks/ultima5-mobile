@@ -16,7 +16,7 @@ import { Game } from './game.ts';
 import { menuSound, titleShown } from './menu.ts';
 import { asPad, upper } from './input.ts';
 import { addressedAsLady, customisable, DEFAULT_APPEARANCE } from './appearance.ts';
-import { K, Pad, type Place, type Dressing } from './io.ts';
+import { K, Pad, pickOf, type Place, type Dressing } from './io.ts';
 import { introTune, playTune, Tune } from './music.ts';
 import { Save } from './save.ts';
 import { characters, currentCharacter, localSave, restore, roomForCharacter, savedAvatar, savedDressing } from './storage.ts';
@@ -259,11 +259,30 @@ export async function askAddress(g: Game): Promise<number | null> {
     put(WIDTH - 2, 3, ' \x1a');
   };
   let taken = false;
+  // Each answer's half of the box, for a tap (ui/directTouch.ts): chosen as the finger lifts on it.
+  const w = t.windows[t.current];
+  const half = (WIDTH * 8) >> 1;
+  const y = (w.top + 3) * 8;
+  g.titleRows = [
+    { i: 0, r: [w.left * 8, y - 4, w.left * 8 + half - 1, y + 11] },
+    { i: 1, r: [w.left * 8 + half, y - 4, w.left * 8 + 2 * half - 1, y + 11] },
+  ];
+  g.titleAcross = true;
   try {
     for (;;) {
       show();
       const k = upper(asPad(g, await g.p.waitKey(() => g.titleIdle?.())));
-      if (k === K.Left || k === K.Right) {
+      const pick = pickOf(k);
+      if (pick) {
+        if (pick.i === 0 || pick.i === 1) {
+          if (chosen !== pick.i) menuSound(g, 'move');
+          chosen = pick.i;
+          if (pick.go) {
+            taken = true;
+            break;
+          }
+        }
+      } else if (k === K.Left || k === K.Right) {
         chosen = k === K.Left ? 0 : 1;
         menuSound(g, 'move');
       } else if ((k === Pad.A || k === K.Enter) && chosen >= 0) {
@@ -279,6 +298,8 @@ export async function askAddress(g: Game): Promise<number | null> {
       }
     }
   } finally {
+    g.titleRows = null;
+    g.titleAcross = false;
     back?.();
     t.select(was);
   }
@@ -304,6 +325,8 @@ export async function askName(g: Game, max: number, at: number, start = ''): Pro
     t.moveTo(at, 0x13);
     g.print(s.padEnd(max));
     const list = items();
+    // Where each line lies, for a tap (ui/directTouch.ts).
+    const rows: { i: number; r: [number, number, number, number] }[] = [];
     for (let r = 0; r < 3; r++) {
       // Within the box's borders, which the lines are cleared inside of.
       t.moveTo(1, NAME_MENU_ROW + r);
@@ -311,11 +334,13 @@ export async function askName(g: Game, max: number, at: number, start = ''): Pro
       const label = list[r];
       if (!label) continue;
       t.moveTo((0x27 - label.length) >> 1, NAME_MENU_ROW + r);
+      rows.push({ i: r, r: [8, (NAME_MENU_ROW + r) * 8, 311, (NAME_MENU_ROW + r) * 8 + 7] });
       t.inverse = r === sel;
       g.print(label);
       t.inverse = false;
     }
     t.moveTo(at + s.length, 0x13);
+    g.titleRows = rows;
   };
   const setName = (name: string): void => {
     s = name.slice(0, max);
@@ -364,8 +389,14 @@ export async function askName(g: Game, max: number, at: number, start = ''): Pro
     // Keys as typed (a name's letters are not the pad's), but Enter is A in Controller input, as everywhere else: it
     // presses the bar - rolling another name where it stands on "Suggest a name" - rather than keeping the name.
     const typed = await g.p.waitKey(() => g.titleIdle?.());
-    const k = typed === K.Enter && g.options.input === 'controller' ? Pad.A : typed;
+    let k = typed === K.Enter && g.options.input === 'controller' ? Pad.A : typed;
     const list = items();
+    // A line tapped (ui/directTouch.ts): the bar on it, pressed as the finger lifts there.
+    const pick = pickOf(k);
+    if (pick) {
+      if (pick.i < list.length) sel = pick.i;
+      k = pick.go ? Pad.A : 0;
+    }
     if (k === K.Up) sel = (sel + list.length - 1) % list.length;
     else if (k === K.Down) sel = (sel + 1) % list.length;
     else if (k === Pad.X || k === K.Tab) suggest();
@@ -387,6 +418,7 @@ export async function askName(g: Game, max: number, at: number, start = ''): Pro
     }
     sel = Math.min(sel, items().length - 1);
   }
+  g.titleRows = null;
   // Within the box's borders, as the lines were drawn: from column 0 the box's left edge went with them.
   for (let r = 0; r < 3; r++) {
     t.moveTo(1, NAME_MENU_ROW + r);
@@ -692,6 +724,11 @@ export class Intro {
       }
       g.text.win.fg = fg;
     }
+    // Where each line lies, for a tap (ui/directTouch.ts): the box's width, a row each.
+    // (Only while the menu is to be chosen from: the opening draws it too, where a tap anywhere goes on.)
+    g.titleRows = this.choosing
+      ? shown.map((_, row) => ({ i: row + this.menuTop, r: [8, (row + top) * 8, 311, (row + top) * 8 + 7] }))
+      : null;
     shown.forEach(([x, text], row) => {
       const i = row + this.menuTop;
       if (i === sel) g.printChar(0xfd);
@@ -802,6 +839,8 @@ export class Intro {
 
   /** The first of the title menu's lines shown, where there are more than its box holds (menu). */
   private menuTop = 0;
+  /** Whether the title's menu is being chosen from (run), its lines a tap's to pick: directTouch.ts. */
+  private choosing = false;
 
   /**
    * A newer version not yet told of (ui/updates.ts), in a box of its own over the title, once a version: what it is,
@@ -1155,12 +1194,18 @@ export class Intro {
     } else {
       this.proseText(words);
       fx.transfer(1, 0, 0, 0, 319, 199);
-      do {
-        k = upper(await this.anyKey());
-        // A controller's A and B answer A and B, and so do the keys that stand for them (Z and X).
-        if (k === Pad.A || k === 0x5a) k = 0x41;
-        else if (k === Pad.B || k === 0x58) k = 0x42;
-      } while (k !== 0x41 && k !== 0x42);
+      // On a touch screen, the touch bar's two answers (ui/touchBar.ts): a tap on the page itself answers nothing.
+      g.touchAnswers = true;
+      try {
+        do {
+          k = upper(await this.anyKey());
+          // A controller's A and B answer A and B, and so do the keys that stand for them (Z and X).
+          if (k === Pad.A || k === 0x5a) k = 0x41;
+          else if (k === Pad.B || k === 0x58) k = 0x42;
+        } while (k !== 0x41 && k !== 0x42);
+      } finally {
+        g.touchAnswers = false;
+      }
     }
     if (k !== first) [a, b] = [b, a];
     this.stats.int += g.data.bytes(0x5164, 8)[a];
@@ -1180,9 +1225,30 @@ export class Intro {
     let x = STAGE.centre;
     let lit = -1;
     let taken = false;
+    // A tap (ui/directTouch.ts): either half of the stage is its bowl's - the first tap walks the Avatar there, a
+    // tap there again (or the touch bar's Choose) takes it, as the d-pad and A do: an answer is not given by accident.
+    g.titleRows = [
+      { i: 0, r: [0, 0, 159, 199] },
+      { i: 1, r: [160, 0, 319, 199] },
+    ];
+    g.titleAcross = true;
+    /** Whether the finger came down on the bowl already walked to: lifted there, it takes it. */
+    let armed = false;
     for (;;) {
       const raw = g.p.pollKey();
-      const k = raw ? asPad(g, raw) : 0;
+      let k = raw ? asPad(g, raw) : 0;
+      const pick = pickOf(k);
+      if (pick) {
+        const i = pick.i;
+        if (i === 0 || i === 1) {
+          if (!pick.go) {
+            armed = side === i;
+            side = i;
+          } else if (armed && side === i) taken = true;
+          else side = i;
+        }
+        k = 0;
+      }
       if (k === K.Left) side = 0;
       else if (k === K.Right) side = 1;
       else if ((k === Pad.A || k === K.Enter || upper(k) === 0x5a) && side >= 0) taken = true; // Z, as A on a keyboard
@@ -1198,6 +1264,8 @@ export class Intro {
       if (taken && lit === side) break;
       await g.p.sleep(33);
     }
+    g.titleRows = null;
+    g.titleAcross = false;
     // A moment in the fire before the next question.
     for (let i = 0; i < 14; i++) {
       const now = performance.now();
@@ -1650,6 +1718,8 @@ export class Intro {
       let key = queued;
       queued = 0;
       let keys = this.menuKeys();
+      this.choosing = true;
+      this.menu(choice);
       while (key <= 0x20) {
         // An update may come down while the title waits: its box, once a version, and its line added then.
         if ((await this.newsBox()) || (await this.updateBox())) {
@@ -1672,6 +1742,18 @@ export class Intro {
         }
         // An update come while the title waits: its box at once (the loop's head), not after the next key.
         if (key === 0 && this.updateDue()) continue;
+        // A line tapped (ui/directTouch.ts): the bar on it, and chosen as the finger lifts there.
+        const pick = pickOf(key);
+        if (pick) {
+          key = 0;
+          if (pick.i < keys.length && !(pick.i === 0 && this.noSave)) {
+            if (pick.i !== choice) menuSound(g, 'move');
+            choice = pick.i;
+            this.menu(choice);
+            if (pick.go) key = keys.charCodeAt(choice);
+          }
+          continue;
+        }
         switch (key) {
           case K.Left:
           case K.Up:
@@ -1702,6 +1784,8 @@ export class Intro {
           }
         }
       }
+      this.choosing = false;
+      g.titleRows = null;
       switch (key) {
         case 0x4a: {
           playTune(g, Tune.None);

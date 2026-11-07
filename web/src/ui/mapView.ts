@@ -341,6 +341,11 @@ function codeOf(e: KeyboardEvent): number {
 let activeMap: { act: (code: number) => void } | null = null;
 
 /** A button or key from the controller or touch pad, for the map if it is showing: true if the map took it. */
+/** Whether the maps are up over the game (the touch bar is theirs then: touchBar.ts). */
+export function mapShowing(): boolean {
+  return activeMap !== null;
+}
+
 export function mapKey(code: number): boolean {
   if (!activeMap) return false;
   activeMap.act(code);

@@ -51,11 +51,11 @@ describe("a fight's tips", () => {
     expect(combatTip(g)).toBe('Tip: Press X for a snap attack!');
   });
 
-  it("hold the shoulders' tip for the touch pad, which has none", () => {
+  it("are worded for touch, and hold the shoulders' tip, which a finger has no buttons for", () => {
     const g = begun();
     g.lastSource = 'touch';
-    expect(combatTip(g)).toBe('Tip: Press X for a snap attack!');
-    expect(combatTip(g)).toBe('Tip: Press Y to cast a spell!');
+    expect(combatTip(g)).toBe('Tip: Tap a foe to strike it!');
+    expect(combatTip(g)).toBe('Tip: Tap Cast to cast a spell!');
     expect(combatTip(g)).toBeNull();
     g.lastSource = 'gamepad';
     expect(combatTip(g)).toBe('Tip: Press LB/RB to cycle snap targets!');

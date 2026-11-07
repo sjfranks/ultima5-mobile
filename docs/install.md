@@ -146,7 +146,7 @@ to allow installs from that source. Or let
 updated from the releases: add `https://github.com/synthwave-pixel/ultima5`
 in Obtainium.
 
-The app runs full screen in landscape, the status and navigation bars
+The app runs full screen, either way up, the status and navigation bars
 hidden - again whenever they come back, as on waking from sleep (where
 they may flicker once, a second after), and at the next button press or
 touch should they still show (a swipe from an edge shows them for a

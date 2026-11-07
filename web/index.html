@@ -41,29 +41,33 @@
         touch-action: manipulation;
         -webkit-text-size-adjust: 100%;
       }
+      html,
       body {
-        min-height: 100vh;
-        min-height: 100dvh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }
-      @media (aspect-ratio < 1 / 1) {
-        body {
-          align-items: flex-start;
-        }
+        height: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
       }
       canvas {
-        /* Its own pixels are the display's (screen.ts sizes it to them and scales the game into them). */
+        /* The whole window: its own pixels are the display's (screen.ts sizes it to them), and where the game's
+           320 by 200 screen goes in it is presentation.ts's - fitted whole, or in play on an upright phone the
+           map across the top and the party and the log under it. Square pixels, as the modern choice. Until the
+           game first draws, what is on it (the loading notice) is fitted whole by object-fit. */
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 100vw;
+        height: 100vh;
+        width: 100dvw;
+        height: 100dvh;
+        object-fit: contain;
         image-rendering: auto;
-        /* 320 by 200 at the DOS game's shape: 16:10 as drawn. The EGA monitor
-           stretched it to 4:3; square pixels are the modern choice. */
-        width: min(100vw, calc(100vh * 16 / 10));
-        width: min(100dvw, calc(100dvh * 16 / 10));
-        aspect-ratio: 16 / 10;
         outline: none;
         display: block;
         touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
       }
     </style>
   </head>

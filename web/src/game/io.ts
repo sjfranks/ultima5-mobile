@@ -81,6 +81,43 @@ export const LOST_FOCUS = 0x1f0;
 export const TURN_LEFT = 0x1e0;
 export const TURN_RIGHT = 0x1e1;
 
+/**
+ * Direct touch (the mobile fork's, ui/directTouch.ts), beyond any key or button. TOUCH: the keys a tap stands for,
+ * typed as they are (Game.touchKeys) - a command's letter and its direction or member, the way 1988's keyboard gave
+ * them - at any prompt that reads the keyboard (input.ts rawKey). A list's line and a square tapped are codes of their
+ * own (touchPick, touchAt, below).
+ */
+export const TOUCH = 0x1f4;
+
+/**
+ * A list's line tapped (touchPick): the line, and whether the finger lifted on it (chosen) or is only down on it (the
+ * bar moved there) - carried in the code itself, so two taps queued before the game reads the first are each read as
+ * they were (menu.ts choose, the title's menus, the gypsy's bowls). A square of the view tapped where the crosshair
+ * is up (touchAt), likewise: aimed at and loosed (combat.ts aim).
+ */
+const TOUCH_PICK = 0x2000;
+const TOUCH_AT = 0x4000;
+
+/** The code for line `line` of a list tapped: `go`, chosen (the finger lifted on it), else only barred. */
+export function touchPick(line: number, go: boolean): number {
+  return TOUCH_PICK + Math.max(0, Math.min(0xfff, line)) * 2 + (go ? 1 : 0);
+}
+
+/** The line a code says was tapped (touchPick), or null for any other code. */
+export function pickOf(k: number): { i: number; go: boolean } | null {
+  return k >= TOUCH_PICK && k < TOUCH_AT ? { i: (k - TOUCH_PICK) >> 1, go: (k & 1) === 1 } : null;
+}
+
+/** The code for square (x, y) of the view tapped (0-15 each). */
+export function touchAt(x: number, y: number): number {
+  return TOUCH_AT + ((y & 15) << 4) + (x & 15);
+}
+
+/** The square a code says was tapped (touchAt), or null for any other code. */
+export function atOf(k: number): { x: number; y: number } | null {
+  return k >= TOUCH_AT && k < TOUCH_AT + 0x100 ? { x: (k - TOUCH_AT) & 15, y: (k - TOUCH_AT) >> 4 } : null;
+}
+
 /** A member drawn on the map: the figure's tile (an actor's, 0x100 on) and its tint, 0xRRGGBB (0 none). */
 export interface Figure {
   tile: number;

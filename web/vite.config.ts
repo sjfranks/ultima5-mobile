@@ -101,7 +101,8 @@ export default defineConfig(({ mode }) => ({
         short_name: 'Ultima V',
         description: 'Ultima V: Warriors of Destiny, on a new engine, with your own copy of the game',
         display: 'standalone',
-        orientation: 'landscape',
+        // Either way up: held upright, the map fills the width and the party and the log go under it (presentation.ts).
+        orientation: 'any',
         background_color: '#000000',
         theme_color: '#000000',
         icons: [

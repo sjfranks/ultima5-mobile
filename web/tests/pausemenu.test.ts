@@ -262,6 +262,7 @@ describe('the Pause menu, Gameplay and Settings', () => {
       'Snap targets',
       'Dialog',
       'Buttons',
+      'Fight taps',
       'Scanlines',
       'Smooth motion',
       'Battery saver',

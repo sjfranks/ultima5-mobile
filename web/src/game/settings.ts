@@ -81,6 +81,11 @@ export interface Options {
    */
   hand: Hand;
   /**
+   * Whether a tap in a fight is confirmed (the mobile fork's, ui/directTouch.ts): the first marks what it would do -
+   * the blow, or the step toward the square - and a second on the same square does it. Off, the first does it.
+   */
+  confirmFight: boolean;
+  /**
    * Battery saver (the port's): the map rests - its water, its figures, the cursor - once a minute has gone by with
    * nothing pressed, until the next press (screen.ts waitKey). Off, it goes on as ever.
    */
@@ -271,6 +276,7 @@ export const DEFAULTS: Options = {
   statusLetters: false,
   dialog: 'play',
   hand: 'left',
+  confirmFight: true,
   batterySaver: false,
   snapTargets: true,
   maxInput: 'medium',
@@ -335,6 +341,7 @@ export function normaliseOptions(from: Saved): Partial<Options> {
   if (saved.pcTiles !== undefined && !PC_TILES.includes(saved.pcTiles)) delete saved.pcTiles;
   if (saved.dialog !== undefined && !DIALOGS.includes(saved.dialog)) delete saved.dialog;
   if (saved.hand !== undefined && !HANDS.includes(saved.hand)) delete saved.hand;
+  if (saved.confirmFight !== undefined && typeof saved.confirmFight !== 'boolean') delete saved.confirmFight;
   if (saved.batterySaver !== undefined && typeof saved.batterySaver !== 'boolean') delete saved.batterySaver;
   if (saved.snapTargets !== undefined && typeof saved.snapTargets !== 'boolean') delete saved.snapTargets;
   if (saved.maxInput !== undefined && !INPUT_PACE_NAMES.includes(saved.maxInput)) delete saved.maxInput;

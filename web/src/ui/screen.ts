@@ -77,6 +77,13 @@ const TILE = 16;
  */
 const BAR_ACROSS = { x: 312 * 4, y: 40 * 4 + 2, n: 32 };
 const BAR_DOWN = { x: 188 * 4 + 2, y: 0, n: 32 };
+/** The frame's colours (Screen.tone), as red, green and blue. */
+export interface Tone {
+  lit: [number, number, number];
+  body: [number, number, number];
+  dark: [number, number, number];
+}
+
 /** 1988's frame: its blue, and the white line round each box. */
 const EGA_BLUE = '#0000aa';
 const EGA_WHITE = '#ffffff';
@@ -628,6 +635,30 @@ export class Screen implements Platform {
     const r = this.canvas.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return null;
     return toScreen(p, ((clientX - r.left) * this.canvas.width) / r.width, ((clientY - r.top) * this.canvas.height) / r.height);
+  }
+
+  /**
+   * The frame's colours now, for the buttons by the game (touchBar.ts, paneTabs.ts): its bars' highlight, body and shade
+   * - the Modern look's read from its frame, in its tone wherever the party is (chromeTone.ts), 1988's white and blue;
+   * null away from play, where there is no frame to match.
+   */
+  tone(): Tone | null {
+    if (!this.playFrame()) return null;
+    if (this.look !== 'standard') return { lit: [255, 255, 255], body: [0, 0, 170], dark: [0, 0, 64] };
+    const d = this.image.data;
+    const at = (i: number): [number, number, number] => {
+      const o = (BAR_ACROSS.y * HI_WIDTH + BAR_ACROSS.x + i) * 4;
+      return [d[o], d[o + 1], d[o + 2]];
+    };
+    const tone = { lit: at(6), body: at(16), dark: at(30) };
+    return tone.body[0] + tone.body[1] + tone.body[2] > 24 ? tone : null;
+  }
+
+  /** The size the log's letters are set at on the page now (CSS pixels): the buttons by the game no smaller. */
+  letterPx(): number {
+    const b = this.presented?.blits.find((x) => x.part === 'view' || x.part === 'screen');
+    if (!b) return 12;
+    return this.fit('mono', 8 * (b.dw / b.sw)).size / devicePixelRatio;
   }
 
   /** Whether a point of the page (CSS pixels) is on the log's pane, or the whole log open (presentation.ts logBox). */

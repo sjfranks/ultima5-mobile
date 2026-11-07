@@ -298,7 +298,7 @@ export function installPageHooks(g: Game, screen: Screen, canvas: HTMLCanvasElem
   new DirectTouch(g, screen, { send, onPress: () => from('touch') });
   const bar = new TouchBar(g, screen, { send, onPress: () => from('touch'), mapShown: mapShowing });
   // Upright, the pane under the map shows the party or the log, chosen by the tabs beside it (paneTabs.ts).
-  const tabs = new PaneTabs(g, screen);
+  const tabs = new PaneTabs(g, screen, { send, onPress: () => from('touch') });
   const placeBar = screen.onPresent;
   screen.onPresent = (p) => {
     placeBar?.(p);

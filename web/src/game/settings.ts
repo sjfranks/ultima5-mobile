@@ -76,6 +76,11 @@ export interface Options {
    */
   dialog: Dialog;
   /**
+   * Which hand's thumb the touch bar is for (the mobile fork's, ui/touchBar.ts): the left's, Act and what chooses at the
+   * bar's left, set in from its edge where the thumb reaches it; the right's, the bar the other way about.
+   */
+  hand: Hand;
+  /**
    * Battery saver (the port's): the map rests - its water, its figures, the cursor - once a minute has gone by with
    * nothing pressed, until the next press (screen.ts waitKey). Off, it goes on as ever.
    */
@@ -100,6 +105,9 @@ export interface Options {
 
 export type Dialog = 'play' | 'log';
 export const DIALOGS: Dialog[] = ['play', 'log'];
+
+export type Hand = 'left' | 'right';
+export const HANDS: Hand[] = ['left', 'right'];
 
 /**
  * Letters (named Classic in Settings): every command is a letter, as in 1988. Controller: the
@@ -262,6 +270,7 @@ export const DEFAULTS: Options = {
   autoPause: false,
   statusLetters: false,
   dialog: 'play',
+  hand: 'left',
   batterySaver: false,
   snapTargets: true,
   maxInput: 'medium',
@@ -325,6 +334,7 @@ export function normaliseOptions(from: Saved): Partial<Options> {
   if (saved.tiles !== undefined && !TILES.includes(saved.tiles)) delete saved.tiles;
   if (saved.pcTiles !== undefined && !PC_TILES.includes(saved.pcTiles)) delete saved.pcTiles;
   if (saved.dialog !== undefined && !DIALOGS.includes(saved.dialog)) delete saved.dialog;
+  if (saved.hand !== undefined && !HANDS.includes(saved.hand)) delete saved.hand;
   if (saved.batterySaver !== undefined && typeof saved.batterySaver !== 'boolean') delete saved.batterySaver;
   if (saved.snapTargets !== undefined && typeof saved.snapTargets !== 'boolean') delete saved.snapTargets;
   if (saved.maxInput !== undefined && !INPUT_PACE_NAMES.includes(saved.maxInput)) delete saved.maxInput;

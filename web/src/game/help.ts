@@ -221,9 +221,10 @@ const TOUCH: Page[] = [
       '  in reach to strike',
       '  it, a square to',
       '  step toward it',
-      'The bar: Act, Cast,',
-      '  Attack, Pass and',
-      '  the Pause menu',
+      'The bar: Act, Pass,',
+      '  Cast, Attack; the',
+      '  other hand: in',
+      '  Settings, Buttons',
     ],
   },
 ];

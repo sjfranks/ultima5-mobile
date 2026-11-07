@@ -2017,6 +2017,12 @@ export function settingLines(g: Game, title = false): Setting[] {
       act: () => void (o.dialog = o.dialog === 'play' ? 'log' : 'play'),
     },
     {
+      // The touch bar's buttons for the thumb of one hand or the other (ui/touchBar.ts).
+      label: `Buttons: ${o.hand === 'left' ? 'Left hand' : 'Right hand'}`,
+      note: 'Touch bar: Act and OK at the left, for the left thumb, or the right.',
+      act: () => void (o.hand = o.hand === 'left' ? 'right' : 'left'),
+    },
+    {
       // Each look its own: the PC (1988) look's on until turned off.
       label: `Scanlines: ${onOff(pc ? o.pcScanlines : o.scanlines)}`,
       note: 'Dark bands over the picture, as an old monitor had. Each UX keeps its own.',

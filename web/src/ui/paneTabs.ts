@@ -12,16 +12,18 @@
  *   after, till the next touch, so that what the answer brought (what was looked at, a door found locked) is read.
  *
  * A tap on the other tab then shows it till the game no longer wants its own. While the party is shown, the Log tab is
- * marked when anything new is written in the log.
+ * marked when anything new is written in the log. Over the two, the Pause menu's button (at the command prompt). All
+ * three in the colours of the frame round the map, their words as large as the log's (buttonLook.ts).
  */
 
 import type { Game } from '../game/game.ts';
+import { Pad } from '../game/io.ts';
+import { buttonLook, toneKey } from './buttonLook.ts';
 import { touchMode } from './directTouch.ts';
+import { pixelIcon } from './pixelIcons.ts';
 import type { Pane, Presentation } from './presentation.ts';
 import type { Screen } from './screen.ts';
 
-const COPPER = '#a85a2a';
-const COPPER_LIT = '#e09a5a';
 const FACE = '"U5 Letters", ui-monospace, monospace';
 /** Where the player's choice is kept. */
 const KEPT = 'u5mobile.pane';
@@ -29,7 +31,10 @@ const KEPT = 'u5mobile.pane';
 export class PaneTabs {
   private readonly root: HTMLDivElement;
   private readonly tabs: Record<Pane, HTMLButtonElement>;
+  private readonly pause: HTMLButtonElement;
   private readonly dot: HTMLSpanElement;
+  /** What the buttons were last drawn in: the frame's colours and the letters' size, which is shown, the menu's use. */
+  private drawn = '';
   /** The player's choice, the game's own where it wants one, and the tab tapped meanwhile. */
   private choice: Pane = 'log';
   private wanted: Pane | null = null;
@@ -41,6 +46,7 @@ export class PaneTabs {
   constructor(
     private readonly g: Game,
     private readonly screen: Screen,
+    private readonly options: { send: (code: number) => void; onPress: () => void },
   ) {
     try {
       const kept = localStorage.getItem(KEPT);
@@ -50,15 +56,19 @@ export class PaneTabs {
     }
     this.root = document.createElement('div');
     this.root.style.cssText =
-      'position:fixed;z-index:25;display:none;flex-direction:column;gap:6px;box-sizing:border-box;padding:2px;' +
+      'position:fixed;z-index:25;display:none;flex-direction:column;gap:5px;box-sizing:border-box;padding:0;' +
       'pointer-events:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none;';
     this.dot = document.createElement('span');
-    this.dot.style.cssText =
-      `display:none;width:7px;height:7px;border-radius:50%;background:${COPPER_LIT};margin-left:5px;vertical-align:middle;` +
-      'box-shadow:0 0 4px rgba(255,190,120,0.9);';
+    this.dot.style.cssText = 'display:none;width:7px;height:7px;border-radius:1px;margin-left:5px;flex:0 0 auto;';
     this.tabs = { party: this.tab('party', 'Party'), log: this.tab('log', 'Log') };
     this.tabs.log.appendChild(this.dot);
-    this.root.append(this.tabs.party, this.tabs.log);
+    this.pause = this.button('Pause menu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.options.onPress();
+      this.options.send(Pad.Start);
+    });
+    this.root.append(this.pause, this.tabs.party, this.tabs.log);
     document.body.appendChild(this.root);
     // The next touch, anywhere, is the next thing done: the log kept up for what an answer brought is let go.
     window.addEventListener(
@@ -114,20 +124,40 @@ export class PaneTabs {
       this.screen.fb.dirty = true;
     }
     if (!this.placed) return;
-    for (const pane of ['party', 'log'] as const) this.light(this.tabs[pane], pane === shown);
+    const tone = this.screen.tone();
+    const size = Math.max(12, this.screen.letterPx());
+    const menu = touchMode(this.g, this.screen) === 'command';
+    const drawn = `${toneKey(tone)}:${size.toFixed(1)}:${shown}:${menu ? 1 : 0}`;
+    if (drawn !== this.drawn) {
+      this.drawn = drawn;
+      for (const pane of ['party', 'log'] as const) this.paint(this.tabs[pane], pane === shown, tone, size);
+      this.paint(this.pause, false, tone, size);
+      this.pause.replaceChildren(pixelIcon('menu', Math.round(size * 1.4)));
+      // The Pause menu is the command prompt's (in a list, its button would do what the list's own does).
+      this.pause.style.opacity = menu ? '1' : '0.35';
+      this.pause.style.pointerEvents = menu ? 'auto' : 'none';
+      this.dot.style.background = buttonLook(tone, true).color;
+    }
     this.dot.style.display = shown !== 'log' && this.screen.logNews ? 'inline-block' : 'none';
   }
 
-  private tab(pane: Pane, label: string): HTMLButtonElement {
+  /** A button of the column: its handler on a press, its look set by paint(). */
+  private button(label: string, press: (e: PointerEvent) => void): HTMLButtonElement {
     const el = document.createElement('button');
     el.type = 'button';
-    el.textContent = label;
-    el.setAttribute('aria-label', `Show the ${pane === 'party' ? 'party' : 'log'}`);
+    el.setAttribute('aria-label', label);
     el.style.cssText =
-      'pointer-events:auto;touch-action:manipulation;flex:1 1 0;min-height:0;width:100%;padding:0 2px;box-sizing:border-box;' +
-      `border-radius:9px;border:2px solid ${COPPER};font:11px/1.1 ${FACE};letter-spacing:0;white-space:nowrap;` +
-      'overflow:hidden;-webkit-tap-highlight-color:transparent;box-shadow:0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,220,180,0.18);';
-    el.addEventListener('pointerdown', (e) => {
+      'pointer-events:auto;touch-action:manipulation;flex:1 1 0;min-height:0;width:100%;padding:0;box-sizing:border-box;' +
+      'display:flex;align-items:center;justify-content:center;border-radius:9px;border:2px solid;letter-spacing:0;' +
+      'white-space:nowrap;overflow:hidden;-webkit-tap-highlight-color:transparent;' +
+      'box-shadow:0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.14);';
+    el.addEventListener('pointerdown', press);
+    el.addEventListener('click', (e) => e.preventDefault());
+    return el;
+  }
+
+  private tab(pane: Pane, label: string): HTMLButtonElement {
+    const el = this.button(`Show the ${pane === 'party' ? 'party' : 'log'}`, (e) => {
       e.preventDefault();
       e.stopPropagation();
       this.linger = false;
@@ -142,13 +172,18 @@ export class PaneTabs {
       }
       this.update();
     });
-    el.addEventListener('click', (e) => e.preventDefault());
+    el.append(label);
     return el;
   }
 
-  private light(el: HTMLButtonElement, on: boolean): void {
-    el.style.borderColor = on ? COPPER_LIT : COPPER;
-    el.style.color = on ? '#fff4dc' : '#c9b393';
-    el.style.background = on ? 'rgba(122,58,22,0.92)' : 'rgba(30,18,10,0.9)';
+  /** A button in the frame's colours, lit where it is the pane shown, its words at the log's size. */
+  private paint(el: HTMLButtonElement, on: boolean, tone: ReturnType<Screen['tone']>, size: number): void {
+    const look = buttonLook(tone, on);
+    Object.assign(el.style, {
+      borderColor: look.border,
+      color: look.color,
+      background: look.background,
+      font: `${size.toFixed(1)}px/1 ${FACE}`,
+    });
   }
 }

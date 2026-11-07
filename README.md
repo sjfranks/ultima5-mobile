@@ -24,8 +24,8 @@ finger on the game itself rather than a drawn controller.
 - **Upright, for one thumb**: the map's square fills the width, frame,
   moons and date and all; under it one pane, the party or the log's last
   nine lines, its letters as large as the map's, with **Party** and
-  **Log** tabs beside it; and under those the buttons, across the foot,
-  Act in the middle. The pane is kept to nine rows, so the map stays low
+  **Log** tabs beside it, and the Pause menu's button over them; and
+  under those the buttons, across the foot. The pane is kept to nine rows, so the map stays low
   enough for the thumb holding the phone - tap the log to read all of it,
   opened over the map, and tap again to close it. The pane shows the
   party by itself while a member is chosen or Ztats is up, and the log
@@ -63,13 +63,17 @@ finger on the game itself rather than a drawn controller.
   arrows and Choose); where a way is asked, tap the
   square. At the gypsy's bowls, tap a side to walk to its bowl, and tap it
   again (or Choose) to give that answer.
-- **The touch bar** keeps backing out at the left and the button that
-  chooses or goes on at the right (at the foot, where the buttons stand
-  in a column beside the panels).
-  It holds what the finger cannot point at, named for what each does
-  where you are: the Pause menu, Pass, Cast, Attack and Act at the prompt;
-  Back, up, down and Choose in a list; the dial's steps; the aim's next
-  target and Fire.
+- **The touch bar** is for one thumb: the button that acts, chooses or
+  goes on stands at the thumb's side, set in a little from the edge, and
+  backing out at the other. It is for the left hand as it comes; Settings,
+  **Buttons: Right hand**, turns it the other way about. It holds what the
+  finger cannot point at, named for what each does where you are: Act,
+  Pass, Cast and Attack at the prompt; OK, up, down and Back in a list;
+  the dial's steps; the aim's next target and Fire. Its buttons and the
+  tabs take the colours of the frame round the map (blue in a fight, or
+  1988's blue and white), their words as large as the log's, with
+  symbols drawn in the game's own square pixels for the arrows, the Pause
+  menu and Attack's sword.
 
 The code is in `web/src/ui/presentation.ts` (where the screen goes),
 `web/src/ui/directTouch.ts` (what a tap means) and

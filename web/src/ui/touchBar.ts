@@ -2,8 +2,9 @@
  * touchBar.ts
  *
  * The touch bar (the mobile fork's): a row of buttons under the game, named for what they do where the game is -
- * Act, Cast, Attack, Pass and the Pause menu at the command prompt; Back, and a page up or down, in a list; the
- * dial's steps; the aim's next target and Fire. Whatever the finger can point at on the game itself is left to it
+ * Act, Pass, Cast and Attack at the command prompt; OK, a line up or down and Back in a list; the dial's steps; the
+ * aim's next target and Fire. What it is for there stands at the thumb's side, set in from the edge - the left's, or
+ * the right's (Settings, Buttons) - in the colours of the frame round the map, its words as large as the log's. Whatever the finger can point at on the game itself is left to it
  * (directTouch.ts); the bar holds the rest. It sits where the screen leaves room for it (presentation.ts): across the
  * foot of an upright phone, under the map and its panes, or up the side of one held sideways.
  *
@@ -13,26 +14,40 @@
 import { firesHere } from '../game/input.ts';
 import type { Game } from '../game/game.ts';
 import { K, Pad } from '../game/io.ts';
+import { buttonLook, toneKey } from './buttonLook.ts';
 import { touchMode } from './directTouch.ts';
+import { pixelIcon, type Icon } from './pixelIcons.ts';
 import type { Presentation } from './presentation.ts';
 import type { Screen } from './screen.ts';
 
-/** A button: its label, the code it sends, and whether it is the one the bar is for there (drawn the brighter). */
+/** A button: its label (or symbol, its label then read aloud), the code it sends, and whether it is the bar's own there. */
 interface Button {
   label: string;
   code: number;
   main?: boolean;
-  /** A small symbol rather than a word (the Pause menu's bars). */
-  icon?: boolean;
+  icon?: Icon;
+}
+
+/**
+ * The bar for where the game is: what it is for there (`primary`), set at the thumb's side of the bar and in from its
+ * edge; what backs out, at the other; and the rest between - kept in their own order (up before down, less before
+ * more), or the other way about with the bar for the other hand (`mirror`).
+ */
+interface Row {
+  primary?: Button;
+  middle: Button[];
+  back?: Button;
+  mirror?: boolean;
 }
 
 /** The bar's least depth across the foot of the screen, in CSS pixels (up the side, it is half as broad again). */
 export const BAR_DEPTH = 64;
 /** The deepest a button across the foot grows, in CSS pixels, where the bar is given more than its least. */
 const BUTTON_DEEPEST = 60;
+/** How far the button the bar is for is set in from the bar's edge, for the thumb to reach (CSS px), and how much wider. */
+const INSET = 24;
+const MAIN_WIDER = 1.3;
 
-const COPPER = '#a85a2a';
-const COPPER_LIT = '#e09a5a';
 const FACE = '"U5 Letters", ui-monospace, monospace';
 
 export interface TouchBarOptions {
@@ -114,87 +129,94 @@ export class TouchBar {
     this.update();
   }
 
-  /**
-   * The buttons for where the game is now, in reading order: backing out first (at the left, or the top of a column)
-   * and what goes on or chooses last (at the right, or the foot of a column, under the thumb).
-   */
-  private buttons(): Button[] {
+  /** The bar for where the game is now (Row). The Pause menu is the tabs', beside the pane (paneTabs.ts). */
+  private row(): Row {
     const g = this.g;
+    const back: Button = { label: 'Back', code: Pad.B };
+    const ok: Button = { label: 'OK', code: Pad.A, main: true };
+    const up: Button = { label: 'Up', code: K.Up, icon: 'up' };
+    const down: Button = { label: 'Down', code: K.Down, icon: 'down' };
     if (this.options.mapShown())
-      return [
-        { label: 'Close', code: Pad.B },
-        { label: 'Other map', code: Pad.X },
-        { label: 'Party', code: Pad.Y },
-      ];
-    const mode = touchMode(g, this.screen);
-    const pause: Button = { label: '\u2261', code: Pad.Start, icon: true };
-    const choose: Button = { label: 'Choose', code: Pad.A, main: true };
-    switch (mode) {
+      return {
+        middle: [
+          { label: 'Other', code: Pad.X },
+          { label: 'Party', code: Pad.Y },
+        ],
+        back: { label: 'Close', code: Pad.B },
+      };
+    switch (touchMode(g, this.screen)) {
       case 'answers':
         // The gypsy's question as 1988's look asks it: its two answers, A and B, as typed.
-        return [
-          { label: 'Answer A', code: 0x41, main: true },
-          { label: 'Answer B', code: 0x42, main: true },
-        ];
+        return {
+          middle: [
+            { label: 'A', code: 0x41, main: true },
+            { label: 'B', code: 0x42, main: true },
+          ],
+        };
       case 'title':
         // The title's lines are small on an upright phone: stepped through here as well as tapped - up and down, or
         // left and right where they stand side by side (Lady or Sir, the gypsy's bowls).
-        return g.titleAcross
-          ? [{ icon: true, label: '\u25c0', code: K.Left }, { icon: true, label: '\u25b6', code: K.Right }, choose]
-          : [{ icon: true, label: '\u25b2', code: K.Up }, { icon: true, label: '\u25bc', code: K.Down }, choose];
+        return {
+          primary: ok,
+          middle: g.titleAcross
+            ? [
+                { label: 'Left', code: K.Left, icon: 'left' },
+                { label: 'Right', code: K.Right, icon: 'right' },
+              ]
+            : [up, down],
+        };
       case 'busy':
-        return [];
+        return { middle: [] };
       case 'command': {
         const fight = g.commandPrompt === 'combat';
         const fire = !fight && firesHere(g);
-        // Act, the most pressed, in the middle, where the thumb rests.
-        return [
-          pause,
-          { label: fight && g.s.battleWon !== 0 ? 'Leave' : 'Pass', code: Pad.B },
-          { label: 'Act', code: Pad.A, main: true },
-          { label: 'Cast', code: Pad.Y },
-          { label: fire ? 'Fire' : 'Attack', code: Pad.X },
-        ];
+        // The Pause menu beside the pane, upright (paneTabs.ts); held sideways, with no pane, here at the far end.
+        const pause: Button[] = this.placed?.tabs ? [] : [{ label: 'Pause menu', code: Pad.Start, icon: 'menu' }];
+        return {
+          primary: { label: 'Act', code: Pad.A, main: true },
+          middle: [
+            { label: fight && g.s.battleWon !== 0 ? 'Exit' : 'Pass', code: Pad.B },
+            { label: 'Cast', code: Pad.Y },
+            fire ? { label: 'Fire', code: Pad.X } : { label: 'Attack', code: Pad.X, icon: 'sword' },
+            ...pause,
+          ],
+          mirror: true,
+        };
       }
       case 'list':
-        // A line is tapped to choose it; the bar steps through them too (and a swipe turns a long list's page).
-        return [
-          { label: 'Back', code: Pad.B },
-          { icon: true, label: '\u25b2', code: K.Up },
-          { icon: true, label: '\u25bc', code: K.Down },
-          choose,
-        ];
+        // A line is tapped to choose it; the bar steps through them too.
+        return { primary: ok, middle: [up, down], back };
       case 'dial':
-        return [
-          { label: 'Back', code: Pad.B },
-          { label: '-10', code: K.Left },
-          { label: '-1', code: K.Down },
-          { label: '+1', code: K.Up },
-          { label: '+10', code: K.Right },
-          { label: 'OK', code: Pad.A, main: true },
-        ];
+        return {
+          primary: ok,
+          middle: [
+            { label: '-10', code: K.Left },
+            { label: '-1', code: K.Down },
+            { label: '+1', code: K.Up },
+            { label: '+10', code: K.Right },
+          ],
+          back: { label: 'Back', code: Pad.B, icon: 'back' },
+        };
       case 'aim':
-        return [
-          { label: 'Cancel', code: Pad.B },
-          { icon: true, label: '\u25c0', code: Pad.LB },
-          { icon: true, label: '\u25b6', code: Pad.RB },
-          { label: 'Fire', code: Pad.A, main: true },
-        ];
+        return {
+          primary: { label: 'Fire', code: Pad.A, main: true },
+          middle: [
+            { label: 'Last foe', code: Pad.LB, icon: 'left' },
+            { label: 'Next foe', code: Pad.RB, icon: 'right' },
+          ],
+          back,
+        };
       case 'member':
-        // A member's line in the panel is tapped to choose them; the panel is over the map, out of the thumb's way,
-        // so the bar steps through them as well.
-        return [{ label: 'Cancel', code: Pad.B }, { icon: true, label: '▲', code: K.Up }, { icon: true, label: '▼', code: K.Down }, choose];
+        // A member's line in the pane is tapped to choose them; the bar steps through them as well.
+        return { primary: ok, middle: [up, down], back };
       case 'way':
-        return [{ label: 'Cancel', code: Pad.B }, ...(g.askingWay === 'here' ? [{ label: 'Here', code: K.Enter, main: true }] : [])];
+        return g.askingWay === 'here' ? { primary: { label: 'Here', code: K.Enter, main: true }, middle: [], back } : { middle: [], back };
       case 'wait':
-        return [
-          { label: 'Back', code: Pad.B },
-          { label: 'Go on', code: Pad.A, main: true },
-        ];
+        return { primary: { label: 'Go on', code: Pad.A, main: true }, middle: [], back };
     }
   }
 
-  /** Draw the buttons again where what they should be has changed. */
+  /** Draw the buttons again where what they should be has changed (or the frame's colours, or the letters' size). */
   update(): void {
     const p = this.placed;
     if (!this.on || !p?.bar) {
@@ -204,31 +226,47 @@ export class TouchBar {
     // While the game works out a turn, the buttons it had stay (no flicker between steps).
     const mode = touchMode(this.g, this.screen);
     if (mode === 'busy' && !this.options.mapShown() && this.shownKey) return;
-    const buttons = this.buttons();
-    const key = `${p.barSide ? 's' : 'b'}:${buttons.map((b) => `${b.label}/${b.code}/${b.main ? 1 : 0}`).join(',')}`;
+    const row = this.row();
+    const left = this.g.options.hand !== 'right';
+    const middle = row.mirror && !left ? [...row.middle].reverse() : row.middle;
+    const ordered = left ? [row.primary, ...middle, row.back] : [row.back, ...middle, row.primary];
+    const buttons = ordered.filter((b): b is Button => b !== undefined);
+    const tone = this.screen.tone();
+    const size = Math.max(12, this.screen.letterPx());
+    const inset = !p.barSide && row.primary !== undefined && buttons.length <= 4;
+    const key =
+      `${p.barSide ? 's' : 'b'}:${left ? 'l' : 'r'}:${inset ? 1 : 0}:${toneKey(tone)}:${size.toFixed(1)}:` +
+      buttons.map((b) => `${b.label}/${b.code}/${b.main ? 1 : 0}`).join(',');
     if (key === this.shownKey) return;
     this.shownKey = key;
     const root = this.root;
     root.replaceChildren();
     root.style.display = buttons.length ? 'flex' : 'none';
-    for (const b of buttons) root.appendChild(this.button(b, p.barSide, buttons.length));
+    root.style.gap = buttons.length > 4 ? '6px' : '8px';
+    const spacer = (): HTMLElement => Object.assign(document.createElement('span'), { style: `flex:0 0 ${INSET}px` });
+    if (inset && left) root.appendChild(spacer());
+    for (const b of buttons) root.appendChild(this.button(b, p.barSide, buttons.length, tone, size));
+    if (inset && !left) root.appendChild(spacer());
   }
 
-  private button(b: Button, side: boolean, count: number): HTMLButtonElement {
+  private button(b: Button, side: boolean, count: number, tone: ReturnType<Screen['tone']>, size: number): HTMLButtonElement {
     const el = document.createElement('button');
     el.type = 'button';
-    el.textContent = b.label;
-    el.setAttribute('aria-label', b.code === Pad.Start ? 'Pause menu' : b.label);
-    const width = side ? 'auto' : `min(84px, calc((100% - ${(count - 1) * 8}px) / ${count}))`;
+    if (b.icon) el.appendChild(pixelIcon(b.icon, Math.round(size * 1.6)));
+    else el.textContent = b.label;
+    el.setAttribute('aria-label', b.label);
+    const look = buttonLook(tone, !!b.main);
+    const grow = b.main && !side ? MAIN_WIDER : 1;
     el.style.cssText =
-      `pointer-events:auto;touch-action:manipulation;flex:${side ? '0 0 auto' : '1 1 0'};width:${width};max-width:${side ? 'none' : '96px'};` +
+      `pointer-events:auto;touch-action:manipulation;flex:${side ? '0 0 auto' : `${grow} 1 0`};min-width:0;` +
+      `max-width:${side ? 'none' : `${Math.round(96 * grow)}px`};display:flex;align-items:center;justify-content:center;` +
       // Across the foot, as deep as the bar leaves (deeper where the phone is tall), up to a thumb's breadth.
-      `height:${side ? '52px' : `min(${BUTTON_DEEPEST}px, 100%)`};padding:0 4px;box-sizing:border-box;border-radius:10px;` +
-      `border:2px solid ${b.main ? COPPER_LIT : COPPER};color:${b.main ? '#fff4dc' : '#e8d6b8'};` +
-      `background:${b.main ? 'rgba(122,58,22,0.92)' : 'rgba(30,18,10,0.9)'};` +
-      `font:${b.icon ? '22px/1 system-ui, sans-serif' : `${side || count < 5 ? 11 : 10}px/1.1 ${FACE}`};letter-spacing:0;` +
+      `height:${side ? '52px' : `min(${BUTTON_DEEPEST}px, 100%)`};padding:0 ${count > 4 ? 2 : 4}px;box-sizing:border-box;border-radius:10px;` +
+      `border:2px solid ${look.border};color:${look.color};background:${look.background};` +
+      // The words no smaller than the log's letters, in their face.
+      `font:${size.toFixed(1)}px/1 ${FACE};letter-spacing:0;` +
       'white-space:nowrap;overflow:hidden;text-overflow:clip;-webkit-tap-highlight-color:transparent;' +
-      'box-shadow:0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,220,180,0.18);';
+      'box-shadow:0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.14);';
     const lit = (on: boolean): void => {
       el.style.filter = on ? 'brightness(1.45)' : '';
       el.style.transform = on ? 'translateY(1px)' : '';

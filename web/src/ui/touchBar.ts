@@ -5,7 +5,7 @@
  * Act, Cast, Attack, Pass and the Pause menu at the command prompt; Back, and a page up or down, in a list; the
  * dial's steps; the aim's next target and Fire. Whatever the finger can point at on the game itself is left to it
  * (directTouch.ts); the bar holds the rest. It sits where the screen leaves room for it (presentation.ts): across the
- * foot of an upright phone, under the party and the log, or up the side of one held sideways.
+ * foot of an upright phone, under the map, or up the side of one held sideways.
  *
  * Shown on a touch screen (or once a finger has touched one); a mouse and keyboard never see it.
  */
@@ -28,6 +28,8 @@ interface Button {
 
 /** The bar's least depth across the foot of the screen, in CSS pixels (up the side, it is half as broad again). */
 export const BAR_DEPTH = 64;
+/** The deepest a button across the foot grows, in CSS pixels, where the bar is given more than its least. */
+const BUTTON_DEEPEST = 60;
 
 const COPPER = '#a85a2a';
 const COPPER_LIT = '#e09a5a';
@@ -178,7 +180,9 @@ export class TouchBar {
           { label: 'Fire', code: Pad.A, main: true },
         ];
       case 'member':
-        return [{ label: 'Cancel', code: Pad.B }];
+        // A member's line in the panel is tapped to choose them; the panel is over the map, out of the thumb's way,
+        // so the bar steps through them as well.
+        return [{ label: 'Cancel', code: Pad.B }, { icon: true, label: '▲', code: K.Up }, { icon: true, label: '▼', code: K.Down }, choose];
       case 'way':
         return [{ label: 'Cancel', code: Pad.B }, ...(g.askingWay === 'here' ? [{ label: 'Here', code: K.Enter, main: true }] : [])];
       case 'wait':
@@ -217,7 +221,8 @@ export class TouchBar {
     const width = side ? 'auto' : `min(84px, calc((100% - ${(count - 1) * 8}px) / ${count}))`;
     el.style.cssText =
       `pointer-events:auto;touch-action:manipulation;flex:${side ? '0 0 auto' : '1 1 0'};width:${width};max-width:${side ? 'none' : '96px'};` +
-      `height:${side ? '52px' : '50px'};padding:0 4px;box-sizing:border-box;border-radius:10px;` +
+      // Across the foot, as deep as the bar leaves (deeper where the phone is tall), up to a thumb's breadth.
+      `height:${side ? '52px' : `min(${BUTTON_DEEPEST}px, 100%)`};padding:0 4px;box-sizing:border-box;border-radius:10px;` +
       `border:2px solid ${b.main ? COPPER_LIT : COPPER};color:${b.main ? '#fff4dc' : '#e8d6b8'};` +
       `background:${b.main ? 'rgba(122,58,22,0.92)' : 'rgba(30,18,10,0.9)'};` +
       `font:${b.icon ? '22px/1 system-ui, sans-serif' : `${side || count < 5 ? 11 : 10}px/1.1 ${FACE}`};letter-spacing:0;` +

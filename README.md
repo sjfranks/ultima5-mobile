@@ -21,11 +21,14 @@ the Apple ][ tile set, and the box's painting, for the key art.
 This fork plays the same engine on a phone held either way up, with the
 finger on the game itself rather than a drawn controller.
 
-- **Upright**, the map's square fills the width of the screen, frame,
-  moons and date and all; the party's panel and the log go under it, side
-  by side on a shorter phone, one over the other (with larger letters) on
-  a taller one. Away from play - the title, the story, a picture - and on a
-  phone held sideways, the screen is shown whole.
+- **Upright, for one thumb**: the buttons run across the foot of the
+  screen, and the map's square sits on them, filling the width, frame,
+  moons and date and all - low enough that the thumb holding the phone
+  reaches every square. The party's panel and the log go above the map,
+  side by side, to be read and never under the thumb. On a tall phone the
+  spare height goes above them all, where a thumb does not reach. Away from
+  play - the title, the story, a picture - and on a phone held sideways,
+  the screen is shown whole.
 - **Tap to walk and act.** A tap on a square beside the party steps there,
   or does what walking into it does: opens the door, talks to the
   townsman, strikes the foe, searches the chest. A tap further off walks
@@ -44,7 +47,8 @@ finger on the game itself rather than a drawn controller.
 - **Menus**: tap a line to choose it (the bar follows the finger, and the
   line is chosen as it lifts); swipe a long list for a page; tap outside a
   box to back out. Drag up and down on a number to dial it. Where a member
-  is asked for, tap their line in the panel; where a way is asked, tap the
+  is asked for, tap their line in the panel (or step to them with the bar's
+  arrows and Choose); where a way is asked, tap the
   square. At the gypsy's bowls, tap a side to walk to its bowl, and tap it
   again (or Choose) to give that answer.
 - **The touch bar** keeps backing out at the left and the button that

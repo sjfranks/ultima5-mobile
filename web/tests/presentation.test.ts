@@ -3,8 +3,8 @@ import { present, toCanvas, toScreen } from '../src/ui/presentation.ts';
 
 /**
  * Where the 320 by 200 screen goes on the display (the mobile fork's presentation.ts): whole away from play and on a
- * screen held sideways; in play on one held upright, the map's square across the top and the party's panel and the
- * log under it - side by side over the bar, or one over the other beside it where that makes their letters larger.
+ * screen held sideways; in play on one held upright, for one thumb: the bar across the foot, the map's square on it,
+ * and the party's panel and the log side by side over the map, any height to spare above them.
  */
 describe('presentation', () => {
   const dpr = 3;
@@ -29,32 +29,54 @@ describe('presentation', () => {
     expect(b.dy + b.dh).toBeLessThanOrEqual(p.bar!.y + 0.5);
   });
 
-  it('in play upright, puts the map across the top as wide as the phone, the panels side by side under it', () => {
+  it('in play upright, sits the map on the bar as wide as the phone, the panels side by side over it', () => {
     const p = present(390 * dpr, 664 * dpr, true, 72, undefined, bar);
     expect(p.portrait).toBe(true);
     const view = p.blits.find((b) => b.part === 'view')!;
     const stats = p.blits.find((b) => b.part === 'stats')!;
     const log = p.blits.find((b) => b.part === 'log')!;
     expect(view.dw).toBeCloseTo(390 * dpr, 5);
-    expect(view.dy).toBe(0);
-    expect(stats.dy).toBeCloseTo(view.dy + view.dh, 5);
     expect(log.dy).toBeCloseTo(stats.dy, 5);
     expect(log.dx).toBeGreaterThan(stats.dx);
+    expect(view.dy).toBeCloseTo(log.dy + log.dh, 5);
     expect(p.barSide).toBe(false);
-    expect(p.bar!.y).toBeGreaterThanOrEqual(log.dy + log.dh - 0.5);
+    expect(p.bar!.y).toBeCloseTo(view.dy + view.dh, 5);
+    expect(p.bar!.y + p.bar!.h).toBeCloseTo(664 * dpr, 5);
     expect(p.bar!.h).toBeGreaterThanOrEqual(bar);
   });
 
-  it('on a tall phone, puts the panels one over the other, larger, with the bar beside them', () => {
+  it('on a tall phone, keeps the map on the bar and puts the height to spare above everything', () => {
     const p = present(390 * dpr, 844 * dpr, true, 72, undefined, bar);
+    const view = p.blits.find((b) => b.part === 'view')!;
     const stats = p.blits.find((b) => b.part === 'stats')!;
     const log = p.blits.find((b) => b.part === 'log')!;
-    expect(log.dy).toBeCloseTo(stats.dy + stats.dh, 5);
-    expect(log.dx).toBeCloseTo(stats.dx, 5);
-    expect(p.barSide).toBe(true);
-    // Larger letters than side by side would give: more canvas pixels to the EGA pixel.
-    const side = present(390 * dpr, 664 * dpr, true, 72, undefined, bar).blits.find((b) => b.part === 'log')!;
-    expect(log.dw / log.sw).toBeGreaterThan((side.dw / side.sw) * 1.1);
+    expect(stats.dy).toBeGreaterThan(0);
+    expect(view.dy).toBeCloseTo(Math.max(stats.dy + stats.dh, log.dy + log.dh), 5);
+    expect(p.bar!.y).toBeCloseTo(view.dy + view.dh, 5);
+    // The bar a little deeper for the thumb, but no more than a quarter again.
+    expect(p.bar!.h).toBeGreaterThan(bar);
+    expect(p.bar!.h).toBeLessThanOrEqual(bar * 1.25 + 0.5);
+    expect(p.bar!.y + p.bar!.h).toBeCloseTo(844 * dpr, 5);
+    // The map's middle lower than the screen's: where the thumb holding the phone reaches.
+    expect(view.dy + view.dh / 2).toBeGreaterThan((844 * dpr) / 2);
+  });
+
+  it('without a bar (no thumb to keep near), centres the whole', () => {
+    const p = present(390 * dpr, 844 * dpr, true, 72);
+    const view = p.blits.find((b) => b.part === 'view')!;
+    const stats = p.blits.find((b) => b.part === 'stats')!;
+    expect(p.bar).toBeNull();
+    expect(stats.dy).toBeCloseTo(844 * dpr - (view.dy + view.dh), 5);
+  });
+
+  it('on a short screen, makes the map narrower than the phone so all of it fits over the bar', () => {
+    const p = present(375 * dpr, 548 * dpr, true, 72, undefined, bar);
+    const view = p.blits.find((b) => b.part === 'view')!;
+    const log = p.blits.find((b) => b.part === 'log')!;
+    expect(view.dw).toBeLessThan(375 * dpr);
+    expect(log.dy).toBeGreaterThanOrEqual(-0.5);
+    expect(p.bar!.h).toBeGreaterThanOrEqual(bar - 0.5);
+    expect(p.bar!.y + p.bar!.h).toBeLessThanOrEqual(548 * dpr + 0.5);
   });
 
   it('follows the panel to its full height (a shop, Ztats): the split moves to 88', () => {
@@ -74,13 +96,13 @@ describe('presentation', () => {
     const back = toScreen(p, r.x + 1, r.y + r.h / 2)!;
     expect(back.part).toBe('stats');
     expect(Math.floor(back.y / 8)).toBe(1);
-    expect(toScreen(p, 1, 390 * dpr * 2)).toBeNull(); // the bar's room is no part of the screen
+    expect(toScreen(p, 1, p.bar!.y + 1)).toBeNull(); // the bar's room is no part of the screen
   });
 
   it('keeps clear of the safe area', () => {
     const insets = { top: 47 * dpr, right: 0, bottom: 34 * dpr, left: 0 };
     const p = present(390 * dpr, 844 * dpr, true, 72, insets, bar);
-    expect(p.blits.find((b) => b.part === 'view')!.dy).toBe(insets.top);
-    expect(p.bar!.y + p.bar!.h).toBeLessThanOrEqual(844 * dpr - insets.bottom + 0.5);
+    expect(Math.min(...p.blits.map((b) => b.dy))).toBeGreaterThanOrEqual(insets.top);
+    expect(p.bar!.y + p.bar!.h).toBeCloseTo(844 * dpr - insets.bottom, 5);
   });
 });

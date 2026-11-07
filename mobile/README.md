@@ -15,8 +15,9 @@ Add to Home Screen.
   across them.
 - Runs full screen either way up (the user's rotation lock is kept) with
   the system bars hidden; a swipe from an edge shows them for a moment.
-  Held upright, the map fills the width and the party and the log go
-  under it (`web/src/ui/presentation.ts`).
+  Held upright, for one thumb: the buttons across the foot, the map on
+  them filling the width, and the party and the log above it
+  (`web/src/ui/presentation.ts`).
 - Maps the system Back button (and a handheld's Back key) to Escape, which
   opens the game's Pause menu. Sent to the background (Home, or another
   app), the game opens the Pause menu too, so it waits there on return.

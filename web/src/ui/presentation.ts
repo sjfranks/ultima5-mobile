@@ -3,9 +3,10 @@
  *
  * Where the game's 320 by 200 screen goes on the display (the mobile fork's). Away from play - the title, the story
  * pages, a picture - and on a screen wider than it is tall, the screen is one picture, fitted whole. In play on a
- * screen taller than it is wide (a phone held upright) it is taken apart: the map's square, its frame and all,
- * across the top, as wide as the display; under it, side by side, the party's panel and the log, at three quarters
- * of the map's scale; and under those the room left for the touch bar (touchBar.ts).
+ * screen taller than it is wide (a phone held upright) it is taken apart for one thumb: the touch bar (touchBar.ts)
+ * across the foot; on it the map's square, its frame and all, as wide as the display, where the thumb reaches all of
+ * it; and over the map, side by side, the party's panel and the log, at three quarters of its scale - to be read, never
+ * under the thumb. Height to spare goes above them all, out of the thumb's way.
  *
  * Everything here is in two spaces: the screen's EGA pixels (320 by 200), and the canvas's own device pixels. A blit
  * is one rectangle of the first drawn into one of the second; a tap is taken back the other way (toScreen).
@@ -36,7 +37,7 @@ export interface Rect {
 }
 
 export interface Presentation {
-  /** The screen taken apart for a phone held upright (the map, then the panels); else whole. */
+  /** The screen taken apart for a phone held upright (the panels, then the map over the bar); else whole. */
   portrait: boolean;
   blits: Blit[];
   /** The room left for the touch bar, in canvas pixels; null where there is none worth having. */
@@ -61,7 +62,7 @@ export const VIEW_SQUARE = { x: 0, y: 0, w: 192, h: 192 };
 const COLUMN_LEFT = 184;
 const COLUMN_RIGHT = 320;
 const COLUMN_FOOT = 200;
-/** How large the panels are drawn beside the map: three quarters of its scale, so two fit side by side under it. */
+/** How large the panels are drawn by the map: three quarters of its scale, so two fit side by side across it. */
 const PANEL_SHARE = 192 / (2 * (COLUMN_RIGHT - COLUMN_LEFT));
 
 /**
@@ -118,87 +119,45 @@ function whole(left: number, top: number, width: number, height: number, portrai
 }
 
 /**
- * In play, upright: the map across the top, and under it the party's panel and the log - side by side with the bar
- * below them, or, where the screen is tall enough for their letters to be the larger so, one over the other with the
- * bar standing beside them.
+ * In play, upright: from the foot up, the bar, the map, and the party's panel and the log side by side - the map where
+ * the thumb holding the phone reaches it, what is to be read above it.
  */
 function upright(left: number, top: number, width: number, height: number, split: number, bar: number): Presentation {
   const columnWidth = COLUMN_RIGHT - COLUMN_LEFT;
   const statsH = split;
   const logH = COLUMN_FOOT - split;
-  // Stacked: as wide as the width the bar's column leaves, as tall as the height the map leaves.
-  const breadth = Math.round(bar * BREADTH_OF_DEPTH);
-  const side = Math.min(width, height - bar);
-  const sideBySide = Math.min(side / (2 * columnWidth), (height - side - bar) / Math.max(statsH, logH));
-  const stacked = Math.min((width - breadth) / columnWidth, (height - side) / (statsH + logH));
-  if (bar > 0 && stacked > sideBySide * 1.1) return stackedPanels(left, top, width, height, split, side, breadth, stacked);
-  return sideBySidePanels(left, top, width, height, split, bar);
-}
-
-/** The bar's breadth up the side, for its depth across the foot. */
-const BREADTH_OF_DEPTH = 1.6;
-
-/** The map across the top; the party's panel over the log under it, at `p` canvas pixels to an EGA pixel; the bar beside. */
-function stackedPanels(
-  left: number,
-  top: number,
-  width: number,
-  height: number,
-  split: number,
-  side: number,
-  breadth: number,
-  p: number,
-): Presentation {
-  const columnWidth = COLUMN_RIGHT - COLUMN_LEFT;
-  const x0 = left + (width - side) / 2;
-  const y0 = top;
-  const panelTop = y0 + side;
-  const w = columnWidth * p;
-  const statsH = split * p;
-  const logH = (COLUMN_FOOT - split) * p;
-  const blits: Blit[] = [
-    { part: 'view', ...rect(VIEW_SQUARE), dx: x0, dy: y0, dw: side, dh: side },
-    { part: 'stats', sx: COLUMN_LEFT, sy: 0, sw: columnWidth, sh: split, dx: x0, dy: panelTop, dw: w, dh: statsH },
-    { part: 'log', sx: COLUMN_LEFT, sy: split, sw: columnWidth, sh: COLUMN_FOOT - split, dx: x0, dy: panelTop + statsH, dw: w, dh: logH },
-  ];
-  const barLeft = x0 + w;
-  return {
-    portrait: true,
-    blits,
-    bar: { x: barLeft, y: panelTop, w: Math.max(breadth, left + width - barLeft), h: top + height - panelTop },
-    barSide: true,
-  };
-}
-
-/** The map across the top, the party's panel and the log side by side under it, the bar below. */
-function sideBySidePanels(left: number, top: number, width: number, height: number, split: number, bar: number): Presentation {
-  const columnWidth = COLUMN_RIGHT - COLUMN_LEFT;
-  const statsH = split;
-  const logH = COLUMN_FOOT - split;
-  // As wide as the display, unless that leaves too little height for the panels and the bar.
+  // The map as wide as the display, unless that leaves too little height for the panels over it and the bar under it.
   const tall = 1 + (PANEL_SHARE * Math.max(statsH, logH)) / VIEW_SQUARE.w;
   const side = Math.min(width, (height - bar) / tall);
-  const f = side / VIEW_SQUARE.w; // canvas pixels to an EGA pixel, in the map
-  const p = f * PANEL_SHARE; // in the panels
-  const x0 = left + (width - side) / 2;
-  const panelsH = p * Math.max(statsH, logH);
-  // The map at the top, the panels under it; what is over goes to the bar, whose buttons keep to the thumbs.
-  const y0 = top;
-  const panelTop = y0 + side;
+  const p = (side / VIEW_SQUARE.w) * PANEL_SHARE; // canvas pixels to an EGA pixel, in the panels
   const half = columnWidth * p;
+  const panelsH = p * Math.max(statsH, logH);
+  const x0 = left + (width - side) / 2;
+  // What height is over: some to the bar (larger buttons for a thumb on a moving train), the rest above everything,
+  // where a thumb does not reach - so the map sits on the bar, the same height from the hand on every phone. With
+  // no bar (no thumb to keep it near), the whole is centred.
+  const spare = Math.max(0, height - panelsH - side - bar);
+  const grow = bar ? Math.min(spare, bar * BAR_GROWTH) : 0;
+  const panelTop = top + (bar ? spare - grow : spare / 2);
+  const mapTop = panelTop + panelsH;
   const blits: Blit[] = [
-    { part: 'view', ...rect(VIEW_SQUARE), dx: x0, dy: y0, dw: side, dh: side },
+    { part: 'view', ...rect(VIEW_SQUARE), dx: x0, dy: mapTop, dw: side, dh: side },
     { part: 'stats', sx: COLUMN_LEFT, sy: 0, sw: columnWidth, sh: statsH, dx: x0, dy: panelTop, dw: half, dh: statsH * p },
     { part: 'log', sx: COLUMN_LEFT, sy: split, sw: columnWidth, sh: logH, dx: x0 + side - half, dy: panelTop, dw: half, dh: logH * p },
   ];
-  const barTop = panelTop + panelsH;
   return {
     portrait: true,
     blits,
-    bar: bar ? { x: left, y: barTop, w: width, h: top + height - barTop } : null,
+    bar: bar ? { x: left, y: mapTop + side, w: width, h: top + height - (mapTop + side) } : null,
     barSide: false,
   };
 }
+
+/** How much deeper the bar may grow, of its least depth, where the height allows. */
+const BAR_GROWTH = 0.25;
+
+/** The bar's breadth up the side, for its depth across the foot. */
+const BREADTH_OF_DEPTH = 1.6;
 
 function rect(r: { x: number; y: number; w: number; h: number }): { sx: number; sy: number; sw: number; sh: number } {
   return { sx: r.x, sy: r.y, sw: r.w, sh: r.h };

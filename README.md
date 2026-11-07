@@ -22,16 +22,20 @@ This fork plays the same engine on a phone held either way up, with the
 finger on the game itself rather than a drawn controller.
 
 - **Upright, for one thumb**: the map's square fills the width, frame,
-  moons and date and all; under it, in one frame of two panes, the party
-  and the log's last nine lines; and under those the buttons, across the
-  foot. The panes are kept no taller than the party's lines, so the map
-  stays low enough for the thumb holding the phone - tap the log to read
-  all of it, opened over the map, and tap again to close it. On a tall
-  phone the spare height goes above everything, where a thumb does not
-  reach. The panes are framed in the look's own style: the Modern look's
-  wooden bars (in the frame's tone wherever the party is), or 1988's blue
-  with a white line round each. Away from play - the title, the story, a
-  picture - and on a phone held sideways, the screen is shown whole.
+  moons and date and all; under it one pane, the party or the log's last
+  nine lines, its letters as large as the map's, with **Party** and
+  **Log** tabs beside it; and under those the buttons, across the foot,
+  Act in the middle. The pane is kept to nine rows, so the map stays low
+  enough for the thumb holding the phone - tap the log to read all of it,
+  opened over the map, and tap again to close it. The pane shows the
+  party by itself while a member is chosen or Ztats is up, and the log
+  while a question waits there (and after, till the next touch); the Log
+  tab is marked when the log has news. On a tall phone the spare height
+  goes above everything, where a thumb does not reach. The pane is framed
+  in the look's own style: the Modern look's wooden bars (in the frame's
+  tone wherever the party is), or 1988's blue with its white line. Away
+  from play - the title, the story, a picture - and on a phone held
+  sideways, the screen is shown whole.
 - **Tap to walk and act.** A tap on a square beside the party steps there,
   or does what walking into it does: opens the door, talks to the
   townsman, strikes the foe, searches the chest. A tap further off walks

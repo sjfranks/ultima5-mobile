@@ -50,6 +50,7 @@ import {
   type Blit,
   type Frame,
   type Insets,
+  type Pane,
   type Part,
   type Presentation,
   type Rect,
@@ -533,6 +534,11 @@ export class Screen implements Platform {
   wayShown: (() => WayShown | null) | null = null;
   /** Whether the whole log is open over the map (upright, in play): a tap on the log opens it, and closes it. */
   logOpen = false;
+  /** Which the pane under the map shows (upright, in play): the party or the log (paneTabs.ts chooses). */
+  pane: Pane = 'log';
+  /** The log as it reads now, and as it read when last shown: what is new in it while the party is shown. */
+  private logNow = '';
+  private logSeen = '';
   /** The bars' art read from the colour page for the panes' frame: across a bar up and down, and down one across. */
   private barArt: { across: HTMLCanvasElement; down: HTMLCanvasElement } | null = null;
 
@@ -694,7 +700,7 @@ export class Screen implements Platform {
     this.base.putImageData(this.image, 0, 0);
     const ctx = this.ctx;
     // Where the screen goes (presentation.ts): whole, or in play on an upright screen taken apart.
-    const p = present(w, h, this.playFrame(), this.panelSplit(), this.insets, this.barDepth(), this.logOpen);
+    const p = present(w, h, this.playFrame(), this.panelSplit(), this.insets, this.barDepth(), this.logOpen, this.pane);
     if (!p.portrait) this.logOpen = false;
     const was = this.presented;
     this.presented = p;
@@ -713,6 +719,7 @@ export class Screen implements Platform {
     if (p.mapEdge) this.squareMapEdge(ctx, p.mapEdge);
     const letters: Letter[] = [...this.fb.lettersShown(), ...this.fb.revealing];
     const marks = this.fb.marksShown();
+    this.readLog(letters, p);
     this.drawLetters(ctx, p.blits, letters, marks, p.blits.length > 1);
     // The harpsichord's keyboard, through the blit that shows the map (or the whole screen).
     const over = p.blits.find((b) => b.part === 'view' || b.part === 'screen');
@@ -730,6 +737,20 @@ export class Screen implements Platform {
       this.drawBlit(ctx, p.overlay.blit);
       this.drawLetters(ctx, [p.overlay.blit], letters, marks, true);
     }
+  }
+
+  /** What the log reads now (its letters, in its rows), and, where it is shown, that all of it has been seen. */
+  private readLog(letters: Letter[], p: Presentation): void {
+    const top = this.panelSplit();
+    let now = '';
+    for (const l of letters) if (l.x >= 192 && l.y >= top && l.y < 192) now += `${l.x},${l.y},${l.text};`;
+    this.logNow = now;
+    if (!p.portrait || this.pane === 'log') this.logSeen = now;
+  }
+
+  /** Whether the log has changed since it was last shown (the party shown under the map meanwhile). */
+  get logNews(): boolean {
+    return this.logNow !== this.logSeen;
   }
 
   /** A part of the colour page onto the canvas, enlarged or made smaller as show() says. */

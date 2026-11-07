@@ -21,6 +21,7 @@ import { addressedAsLady } from '../game/appearance.ts';
 import type { Screen } from './screen.ts';
 import type { PcSound } from './sound.ts';
 import { DirectTouch } from './directTouch.ts';
+import { PaneTabs } from './paneTabs.ts';
 import { TouchBar } from './touchBar.ts';
 
 /**
@@ -296,6 +297,13 @@ export function installPageHooks(g: Game, screen: Screen, canvas: HTMLCanvasElem
   // touch bar for the rest (touchBar.ts) - in place of the virtual controller (touch.ts), which is not put up.
   new DirectTouch(g, screen, { send, onPress: () => from('touch') });
   const bar = new TouchBar(g, screen, { send, onPress: () => from('touch'), mapShown: mapShowing });
+  // Upright, the pane under the map shows the party or the log, chosen by the tabs beside it (paneTabs.ts).
+  const tabs = new PaneTabs(g, screen);
+  const placeBar = screen.onPresent;
+  screen.onPresent = (p) => {
+    placeBar?.(p);
+    tabs.place(p);
+  };
   g.hooks = {
     applyOptions: apply,
     transfer: {

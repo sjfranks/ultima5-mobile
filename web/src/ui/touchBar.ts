@@ -147,12 +147,13 @@ export class TouchBar {
       case 'command': {
         const fight = g.commandPrompt === 'combat';
         const fire = !fight && firesHere(g);
+        // Act, the most pressed, in the middle, where the thumb rests.
         return [
           pause,
           { label: fight && g.s.battleWon !== 0 ? 'Leave' : 'Pass', code: Pad.B },
+          { label: 'Act', code: Pad.A, main: true },
           { label: 'Cast', code: Pad.Y },
           { label: fire ? 'Fire' : 'Attack', code: Pad.X },
-          { label: 'Act', code: Pad.A, main: true },
         ];
       }
       case 'list':

@@ -46,7 +46,7 @@ const MIDDLE = 5;
  * How long a finger rests on the map before the party walks toward it (ms) - resting, within REST_PX (CSS px) of
  * where it came to rest: a thumb on a moving train wavers, and a finger slid that far starts its rest again.
  */
-const HOLD_MS = 400;
+const HOLD_MS = 280;
 const REST_PX = 18;
 /** A swipe: this far (CSS px) in this long (ms), mostly up or down. */
 const SWIPE_PX = 30;

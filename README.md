@@ -48,11 +48,16 @@ finger on the game itself rather than a drawn controller.
   finger down (a thumb that wavers is still holding, and a finger slid and
   rested holds anew): the party walks toward it for as long as it stays
   down, round walls and whatever is in the way, the way marked as it goes;
-  slide it to steer, lift it to stop. Held, the party opens a door it
-  comes to but walks into no one - talking and fighting are a tap's. Tap
-  the party for what there is to do here.
+  slide it to steer, lift it to stop. Held, the party walks into no one -
+  talking and fighting are a tap's. Tap the party for what there is to do
+  here. A way, tapped or held, is planned over the map's own ground, so it
+  goes round walls the party cannot see (the dark of a night in a town),
+  and through a door that is shut but not locked, opening it on the way.
 - **Fights**: tap a foe your weapon reaches to strike or shoot it, or any
-  square to step toward it; where a crosshair is up, tap what to aim at.
+  square to step toward it - the first tap marks the blow or the way, and
+  a second tap on the same square does it (Settings, **Fight taps: At
+  once**, does it at the first); where a crosshair is up, tap what to aim
+  at.
 - **Dungeons**: tap the view's left or right third to turn, its middle to
   step ahead, its foot to step back.
 - **Menus**: tap a line to choose it (the bar follows the finger, and the

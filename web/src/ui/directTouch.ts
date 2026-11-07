@@ -33,6 +33,8 @@ import { byCompass } from '../game/dungeonMap.ts';
 import { CF, type Game } from '../game/game.ts';
 import { npcOfActor } from '../game/town.ts';
 import { K, Pad, TOUCH, touchAt, touchPick, touchScroll } from '../game/io.ts';
+import { T } from '../game/tiles.ts';
+import { tileAt } from '../game/world.ts';
 import type { Screen } from './screen.ts';
 import { cancelsTouch } from './touch.ts';
 
@@ -101,6 +103,9 @@ const STEPS: [number, number, number][] = [
  * The shortest way across the view from (fx, fy) - its middle, the party's square - to (tx, ty) (view squares),
  * through the squares `open` lets the party onto: each square stepped onto, the first first, ending on (tx, ty) - which,
  * where it cannot be stood on (a townsman, a door, a foe), is walked into from beside it. Empty where there is none.
+ * Squares `through` says can be gone through though not stood on now - a door shut but not locked, opened by walking
+ * into it - are on the way too, at two steps' cost (the one that opens it, the one onto it), so a way as short with no
+ * door in it is the one taken.
  */
 export function wayTo(
   tx: number,
@@ -108,30 +113,40 @@ export function wayTo(
   open: (x: number, y: number) => boolean,
   fx = MIDDLE,
   fy = MIDDLE,
+  through: (x: number, y: number) => boolean = () => false,
 ): { x: number; y: number }[] {
   const start = fy * ACROSS + fx;
   const goal = ty * ACROSS + tx;
   if (goal === start || tx < 0 || ty < 0 || tx >= ACROSS || ty >= ACROSS) return [];
   const from = new Int16Array(ACROSS * ACROSS).fill(-1);
+  const best = new Int16Array(ACROSS * ACROSS).fill(0x7fff);
   from[start] = start;
-  const queue = [start];
+  best[start] = 0;
   const back = (at: number): { x: number; y: number }[] => {
     const out: { x: number; y: number }[] = [];
     for (let i = at; i !== start; i = from[i]) out.unshift({ x: i % ACROSS, y: Math.floor(i / ACROSS) });
     return out;
   };
-  for (let q = queue.shift(); q !== undefined; q = queue.shift()) {
-    const [x, y] = [q % ACROSS, Math.floor(q / ACROSS)];
-    for (const [sx, sy] of STEPS) {
-      const [nx, ny] = [x + sx, y + sy];
-      if (nx < 0 || ny < 0 || nx >= ACROSS || ny >= ACROSS) continue;
-      const at = ny * ACROSS + nx;
-      if (from[at] >= 0) continue;
-      // The goal is reached from any square beside it, open or not; nothing else is stepped onto but open ground.
-      if (at !== goal && !open(nx, ny)) continue;
-      from[at] = q;
-      if (at === goal) return back(at);
-      queue.push(at);
+  // Squares by the steps it takes to reach them (one or two a square): each reached first by the fewest.
+  const byCost: number[][] = [[start]];
+  for (let d = 0; d < byCost.length; d++) {
+    for (const q of byCost[d] ?? []) {
+      if (best[q] !== d) continue;
+      const [x, y] = [q % ACROSS, Math.floor(q / ACROSS)];
+      for (const [sx, sy] of STEPS) {
+        const [nx, ny] = [x + sx, y + sy];
+        if (nx < 0 || ny < 0 || nx >= ACROSS || ny >= ACROSS) continue;
+        const at = ny * ACROSS + nx;
+        // The goal is reached from any square beside it, open or not; nothing else is stepped onto but open ground,
+        // or a door to be opened on the way.
+        const cost = at === goal || open(nx, ny) ? 1 : through(nx, ny) ? 2 : 0;
+        if (cost === 0 || d + cost >= best[at]) continue;
+        best[at] = d + cost;
+        from[at] = q;
+        // (The goal costs one step from beside it: first reached, it is reached as soon as it can be.)
+        if (at === goal) return back(at);
+        (byCost[d + cost] ??= []).push(at);
+      }
     }
   }
   return [];
@@ -245,6 +260,8 @@ export class DirectTouch {
   /** The way marked over the map: where a finger down would walk, or where the party is walking. */
   private way: Way | null = null;
   private wayTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A square tapped once in a fight, to be done at a second tap (Settings, Fight taps): whose turn, where they stood. */
+  private armed: { x: number; y: number; turn: number; fromX: number; fromY: number } | null = null;
   /** A long list gliding on after a flick. */
   private flick: ReturnType<typeof setInterval> | null = null;
 
@@ -340,7 +357,7 @@ export class DirectTouch {
     if (g.commandPrompt === 'combat') return this.fightWay(square);
     if (!this.walksTheMap() || g.inDungeon || g.s.sailing !== 0) return null;
     if (square.x === MIDDLE && square.y === MIDDLE) return null;
-    const found = wayTo(square.x, square.y, (x, y) => this.open(x, y));
+    const found = this.wayOver(square.x, square.y);
     return {
       frame: 'map',
       steps: found.slice(0, -1).map((p) => this.onMap(p)),
@@ -757,14 +774,31 @@ export class DirectTouch {
     this.startWalk(square);
   }
 
-  /** A tap in a fight, from whoever's turn it is. */
+  /**
+   * A tap in a fight, from whoever's turn it is: done - or, as Settings has it (Fight taps: Confirm), marked first,
+   * the blow or the way toward the square shown, and done at a second tap on the same square (another square tapped
+   * is marked instead). The member themself, tapped, opens what there is to do, as ever.
+   */
   private fight(square: { x: number; y: number }): void {
     const g = this.g;
     const i = g.s.combatTurn;
     const c = g.combat[i];
     if (!c || (c.flags & CF.Player) === 0) return this.key(Pad.A);
     const [dx, dy] = [square.x - c.x, square.y - c.y];
-    if (dx === 0 && dy === 0) return this.key(Pad.A);
+    if (dx === 0 && dy === 0) {
+      this.armed = null;
+      return this.key(Pad.A);
+    }
+    if (g.options.confirmFight) {
+      const a = this.armed;
+      if (!a || a.x !== square.x || a.y !== square.y || a.turn !== i || a.fromX !== c.x || a.fromY !== c.y) {
+        this.armed = { x: square.x, y: square.y, turn: i, fromX: c.x, fromY: c.y };
+        // Kept marked (not taken away as a tap's way is) till the next tap.
+        this.setWay(this.fightWay(square));
+        return;
+      }
+      this.armed = null;
+    }
     // A foe the member's weapon reaches (a snap attack could open on it): struck, or shot at, there.
     const j = combatantAt(g, square.x, square.y);
     if (j >= 0 && onMonsterSide(g, j) && snapTargets(g, i).includes(j)) {
@@ -840,7 +874,7 @@ export class DirectTouch {
       return 0;
     }
     const open = (x: number, y: number): boolean => this.open(x, y);
-    const found = wayTo(target.x, target.y, open);
+    const found = this.wayOver(target.x, target.y);
     const kind = this.kindAt(target.x, target.y, found.length > 0);
     this.setWay({ frame: 'map', steps: found.slice(0, -1).map((p) => this.onMap(p)), end: { x: goal.x, y: goal.y }, kind });
     // No nearer: the square under the finger again at the next step (the view moved under it on the way).
@@ -851,10 +885,13 @@ export class DirectTouch {
     if (!found.length) return stand();
     const next = found[0];
     if (!open(next.x, next.y)) {
-      if (next.x !== target.x || next.y !== target.y || kind !== 'into') return stand();
+      // A door on the way opens as it is walked into (once: one that does not, the way stops at it).
+      const door = (next.x !== target.x || next.y !== target.y) && this.door(next.x, next.y);
+      if (!door && (next.x !== target.x || next.y !== target.y || kind !== 'into')) return stand();
       // Walked into once (a door opened, or found locked), not again while the finger stays on it.
-      if (this.steerBumped?.x === goal.x && this.steerBumped.y === goal.y) return stand();
-      this.steerBumped = { x: goal.x, y: goal.y };
+      const bumped = door ? this.onMap(next) : { x: goal.x, y: goal.y };
+      if (this.steerBumped?.x === bumped.x && this.steerBumped.y === bumped.y) return stand();
+      this.steerBumped = bumped;
     }
     return arrowToward(next.x - MIDDLE, next.y - MIDDLE);
   }
@@ -933,7 +970,7 @@ export class DirectTouch {
     if (tx === MIDDLE && ty === MIDDLE) return this.stopWalk();
     if (tx < 0 || ty < 0 || tx >= ACROSS || ty >= ACROSS || w.steps >= WALK_STEPS) return this.stopWalk();
     const open = (x: number, y: number): boolean => this.open(x, y);
-    const found = wayTo(tx, ty, open);
+    const found = this.wayOver(tx, ty);
     // What is left of it, marked over the map.
     this.setWay({
       frame: 'map',
@@ -947,12 +984,19 @@ export class DirectTouch {
     if (key === 0) return this.stopWalk();
     const step = STEPS.find((st) => st[2] === key)!;
     const [nx, ny] = [MIDDLE + step[0], MIDDLE + step[1]];
-    // The square ahead is walked into only where it is the one tapped: anything else there (someone come into the way)
-    // ends the walk rather than be spoken to or struck.
+    // The square ahead is walked into only where it is the one tapped, or a door on the way, which opens as it is: anything
+    // else there (someone come into the way) ends the walk rather than be spoken to or struck.
     const there = nx === tx && ny === ty;
-    if (!there && !open(nx, ny) && w.steps > 0) return this.stopWalk();
+    const door = !there && !open(nx, ny) && this.door(nx, ny);
+    if (!there && !open(nx, ny) && !door && w.steps > 0) return this.stopWalk();
     w.steps++;
     w.at = now;
+    if (door) {
+      // Opened, the party where it was; the next step goes through.
+      w.last = { x: s.x, y: s.y };
+      this.key(key, w.steps > 1);
+      return;
+    }
     // Walking into what was tapped is the walk's end, whatever it does.
     if (there && !open(nx, ny)) {
       this.stopWalk();
@@ -963,15 +1007,42 @@ export class DirectTouch {
     this.key(key, w.steps > 1);
   }
 
-  /** Whether the party can stand on the view's square (x, y): ground it can enter, nobody on it, within the map. */
+  /**
+   * Whether the party can stand on the view's square (x, y): ground it can enter, nobody on it, within the map. The
+   * ground is the map's own, not what the view shows of it - which is nothing where the party cannot see (the dark of
+   * a night in a town, the far side of a wall), and nothing is not a wall.
+   */
   private open(x: number, y: number): boolean {
+    const tile = this.ground(x, y);
+    return tile !== null && canEnter(this.g, this.g.s.partyTile, tile);
+  }
+
+  /** Whether the view's square (x, y) is a door shut but not locked, with nobody in it: opened by walking into it. */
+  private door(x: number, y: number): boolean {
+    const tile = this.ground(x, y);
+    return tile === T.DoorB8 || tile === T.DoorBA;
+  }
+
+  /** The map's tile at the view's square (x, y), where nobody stands on it within the map; null otherwise. */
+  private ground(x: number, y: number): number | null {
     const g = this.g;
     const s = g.s;
-    if (x < 0 || y < 0 || x >= ACROSS || y >= ACROSS) return false;
+    if (x < 0 || y < 0 || x >= ACROSS || y >= ACROSS) return null;
     const [mx, my] = [s.x + x - MIDDLE, s.y + y - MIDDLE];
-    if (g.inTown && (mx < 0 || my < 0 || mx > 31 || my > 31)) return false;
-    if (this.actorAt(mx & 0xff, my & 0xff) !== 0) return false;
-    const tile = g.view[y * 32 + x];
-    return canEnter(g, s.partyTile, tile);
+    if (g.inTown && (mx < 0 || my < 0 || mx > 31 || my > 31)) return null;
+    if (this.actorAt(mx & 0xff, my & 0xff) !== 0) return null;
+    return tileAt(g, g.outdoors ? mx & 0xff : mx, g.outdoors ? my & 0xff : my);
+  }
+
+  /** wayTo over the map, through the doors that open as they are walked into. */
+  private wayOver(tx: number, ty: number): { x: number; y: number }[] {
+    return wayTo(
+      tx,
+      ty,
+      (x, y) => this.open(x, y),
+      MIDDLE,
+      MIDDLE,
+      (x, y) => this.door(x, y),
+    );
   }
 }

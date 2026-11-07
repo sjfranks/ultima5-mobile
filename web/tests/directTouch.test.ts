@@ -104,6 +104,36 @@ describe('direct touch', () => {
     expect(wayTo(5, 5, open)).toEqual([]);
   });
 
+  it('goes through a door shut but not locked (opened as it is walked into), and round one where it is no longer', () => {
+    // A wall across the view, a door (D) in it: the square beyond is reached through the door.
+    const rows = [
+      '...........',
+      '...........',
+      '...........',
+      '###D#######',
+      '...........',
+      '...........',
+      '...........',
+      '...........',
+      '...........',
+      '...........',
+      '...........',
+    ];
+    const open = (x: number, y: number): boolean => rows[y]?.[x] === '.';
+    const door = (x: number, y: number): boolean => rows[y]?.[x] === 'D';
+    const way = wayTo(3, 1, open, 5, 5, door);
+    expect(way[way.length - 1]).toEqual({ x: 3, y: 1 });
+    expect(way).toContainEqual({ x: 3, y: 3 });
+    // Without doors to go through, no way at all.
+    expect(wayTo(3, 1, open)).toEqual([]);
+    // A gap in the wall as near as the door: the way through it, not the door (a door costs a step more).
+    const gap = rows.map((r, y) => (y === 3 ? '###D###.###' : r));
+    const open2 = (x: number, y: number): boolean => gap[y]?.[x] === '.';
+    const door2 = (x: number, y: number): boolean => gap[y]?.[x] === 'D';
+    expect(wayTo(5, 1, open2, 5, 5, door2)).toContainEqual({ x: 7, y: 3 });
+    expect(wayTo(5, 1, open2, 5, 5, door2)).not.toContainEqual({ x: 3, y: 3 });
+  });
+
   it('plans from any square (a fight, from whoever acts)', () => {
     const open = grid(Array.from({ length: 11 }, () => '...........'));
     expect(firstStep(1, 9, open, 1, 1)).toBe(K.Down);

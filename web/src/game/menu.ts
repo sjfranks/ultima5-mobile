@@ -2023,6 +2023,12 @@ export function settingLines(g: Game, title = false): Setting[] {
       act: () => void (o.hand = o.hand === 'left' ? 'right' : 'left'),
     },
     {
+      // A tap in a fight marks what it would do, a second does it (ui/directTouch.ts fight) - or the first does it.
+      label: `Fight taps: ${o.confirmFight ? 'Confirm' : 'At once'}`,
+      note: 'Touch, in a fight: one tap marks the blow or the step, a second does it.',
+      act: () => void (o.confirmFight = !o.confirmFight),
+    },
+    {
       // Each look its own: the PC (1988) look's on until turned off.
       label: `Scanlines: ${onOff(pc ? o.pcScanlines : o.scanlines)}`,
       note: 'Dark bands over the picture, as an old monitor had. Each UX keeps its own.',

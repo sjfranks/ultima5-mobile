@@ -4,9 +4,11 @@
  * Where the game's 320 by 200 screen goes on the display (the mobile fork's). Away from play - the title, the story
  * pages, a picture - and on a screen wider than it is tall, the screen is one picture, fitted whole. In play on a
  * screen taller than it is wide (a phone held upright) it is taken apart for one thumb: the touch bar (touchBar.ts)
- * across the foot; on it the map's square, its frame and all, as wide as the display, where the thumb reaches all of
- * it; and over the map, side by side, the party's panel and the log, at three quarters of its scale - to be read, never
- * under the thumb. Height to spare goes above them all, out of the thumb's way.
+ * across the foot; over it, in one frame of two panes, the party's lines and the log's last nine; and over those the
+ * map's square, its frame and all, as wide as the display - kept low, where the thumb holding the phone reaches it,
+ * by the panes being no taller than the party's lines (the log opens whole over the map at a tap). Height to spare
+ * goes above it all, out of the thumb's way. The panes' frame is drawn by the screen (screen.ts drawFrame), in the
+ * look's own style: the Modern look's wooden bars, or 1988's blue with its white line round each.
  *
  * Everything here is in two spaces: the screen's EGA pixels (320 by 200), and the canvas's own device pixels. A blit
  * is one rectangle of the first drawn into one of the second; a tap is taken back the other way (toScreen).
@@ -36,6 +38,15 @@ export interface Rect {
   h: number;
 }
 
+/**
+ * A frame round panes of the screen taken apart (canvas pixels): its outside, its bars' thickness, and the left edges
+ * of the bars standing between its panes.
+ */
+export interface Frame extends Rect {
+  t: number;
+  dividers: number[];
+}
+
 export interface Presentation {
   /** The screen taken apart for a phone held upright (the panels, then the map over the bar); else whole. */
   portrait: boolean;
@@ -44,6 +55,17 @@ export interface Presentation {
   bar: Rect | null;
   /** Whether the bar stands upright at the side (landscape), rather than across the foot. */
   barSide: boolean;
+  /** Frames drawn round the panes before the blits (upright, in play). */
+  frames: Frame[];
+  /** The whole log opened over the map (a tap on the log): drawn over everything, and tapped before anything. */
+  overlay: { frame: Frame; blit: Blit } | null;
+  /** Where a tap opens the whole log, or closes it: the log's pane, or the whole log open; null where it has none. */
+  logBox: Rect | null;
+  /**
+   * The map's frame's right-hand bar, upright (canvas pixels): on the whole screen it runs on into the party box's, its
+   * corners joints - squared off by the screen (screen.ts) as the left-hand bar is.
+   */
+  mapEdge: Rect | null;
 }
 
 /** The safe area's insets (notches, rounded corners, the home indicator), in canvas pixels. */
@@ -58,12 +80,20 @@ export const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 
 /** The map's square with its frame (the moons above it, the date below), in EGA pixels. */
 export const VIEW_SQUARE = { x: 0, y: 0, w: 192, h: 192 };
-/** The right-hand column, its left edge the view's frame (so each panel has a side), down to the screen's foot. */
-const COLUMN_LEFT = 184;
-const COLUMN_RIGHT = 320;
-const COLUMN_FOOT = 200;
-/** How large the panels are drawn by the map: three quarters of its scale, so two fit side by side across it. */
-const PANEL_SHARE = 192 / (2 * (COLUMN_RIGHT - COLUMN_LEFT));
+/**
+ * Upright, the panes in their frame (EGA pixels): the party's lines inside their box (columns 24 to 38) and the log's
+ * (24 to 39) - nine rows each, the log's last nine (its last row 23), the party's whole panel or the Modern look's
+ * own seven rows with its last (food and gold) at the foot - each in bars as thick as the screen's frame.
+ */
+const BAR = 8;
+const STATS_X = 192;
+const STATS_W = 120;
+const LOG_X = 192;
+const LOG_W = 128;
+const LOG_FOOT = 192;
+const PANE_H = 72;
+const PANES_W = BAR + STATS_W + BAR + LOG_W + BAR;
+const PANES_H = BAR + PANE_H + BAR;
 
 /**
  * Where the screen goes on a canvas `w` by `h` (its pixels). `play`: the game's own frame is up (the map, the party
@@ -71,13 +101,21 @@ const PANEL_SHARE = 192 / (2 * (COLUMN_RIGHT - COLUMN_LEFT));
  * log (72 for the Modern look's own, 88 for 1988's and the Modern look's full panel). `bar`, the touch bar's least
  * depth across the foot (or breadth at the side), in canvas pixels; 0 for no bar.
  */
-export function present(w: number, h: number, play: boolean, split: number, insets: Insets = NO_INSETS, bar = 0): Presentation {
+export function present(
+  w: number,
+  h: number,
+  play: boolean,
+  split: number,
+  insets: Insets = NO_INSETS,
+  bar = 0,
+  logOpen = false,
+): Presentation {
   const left = insets.left;
   const top = insets.top;
   const width = Math.max(1, w - insets.left - insets.right);
   const height = Math.max(1, h - insets.top - insets.bottom);
   const portrait = height > width * 1.15;
-  if (portrait && play) return upright(left, top, width, height, split, bar);
+  if (portrait && play) return upright(left, top, width, height, split, bar, logOpen);
   return whole(left, top, width, height, portrait, bar);
 }
 
@@ -95,6 +133,10 @@ function whole(left: number, top: number, width: number, height: number, portrai
       blits: [{ part: 'screen', sx: 0, sy: 0, sw: 320, sh: 200, dx, dy, dw, dh }],
       bar: bar ? { x: left, y: top + height - bar, w: width, h: bar } : null,
       barSide: false,
+      frames: [],
+      overlay: null,
+      logBox: null,
+      mapEdge: null,
     };
   }
   // Landscape: the bar at the right where the picture leaves room for it; else none (a desktop, a keyboard).
@@ -115,41 +157,74 @@ function whole(left: number, top: number, width: number, height: number, portrai
     blits: [{ part: 'screen', sx: 0, sy: 0, sw: 320, sh: 200, dx, dy, dw, dh }],
     bar: side ? { x: left + width - bar, y: top, w: bar, h: height } : null,
     barSide: side,
+    frames: [],
+    overlay: null,
+    logBox: null,
+    mapEdge: null,
   };
 }
 
 /**
- * In play, upright: from the foot up, the bar, the map, and the party's panel and the log side by side - the map where
- * the thumb holding the phone reaches it, what is to be read above it.
+ * In play, upright: from the foot up, the bar, the panes (the party's lines and the log's last), and the map on them -
+ * as low as the thumb holding the phone would have it, and everything to be read in sight under it.
  */
-function upright(left: number, top: number, width: number, height: number, split: number, bar: number): Presentation {
-  const columnWidth = COLUMN_RIGHT - COLUMN_LEFT;
-  const statsH = split;
-  const logH = COLUMN_FOOT - split;
-  // The map as wide as the display, unless that leaves too little height for the panels over it and the bar under it.
-  const tall = 1 + (PANEL_SHARE * Math.max(statsH, logH)) / VIEW_SQUARE.w;
-  const side = Math.min(width, (height - bar) / tall);
-  const p = (side / VIEW_SQUARE.w) * PANEL_SHARE; // canvas pixels to an EGA pixel, in the panels
-  const half = columnWidth * p;
-  const panelsH = p * Math.max(statsH, logH);
+function upright(left: number, top: number, width: number, height: number, split: number, bar: number, logOpen: boolean): Presentation {
+  // The map as wide as the display, the panes as wide as it under it - unless that leaves too little height for them
+  // and the bar.
+  const side = Math.min(width, (height - bar) / (1 + PANES_H / PANES_W));
+  const p = side / PANES_W; // canvas pixels to an EGA pixel, in the panes
+  const panesH = PANES_H * p;
   const x0 = left + (width - side) / 2;
   // What height is over: some to the bar (larger buttons for a thumb on a moving train), the rest above everything,
-  // where a thumb does not reach - so the map sits on the bar, the same height from the hand on every phone. With
-  // no bar (no thumb to keep it near), the whole is centred.
-  const spare = Math.max(0, height - panelsH - side - bar);
+  // where a thumb does not reach - so the map stays as near the hand as the panes let it, on every phone. With no bar
+  // (no thumb to keep it near), the whole is centred.
+  const spare = Math.max(0, height - side - panesH - bar);
   const grow = bar ? Math.min(spare, bar * BAR_GROWTH) : 0;
-  const panelTop = top + (bar ? spare - grow : spare / 2);
-  const mapTop = panelTop + panelsH;
-  const blits: Blit[] = [
-    { part: 'view', ...rect(VIEW_SQUARE), dx: x0, dy: mapTop, dw: side, dh: side },
-    { part: 'stats', sx: COLUMN_LEFT, sy: 0, sw: columnWidth, sh: statsH, dx: x0, dy: panelTop, dw: half, dh: statsH * p },
-    { part: 'log', sx: COLUMN_LEFT, sy: split, sw: columnWidth, sh: logH, dx: x0 + side - half, dy: panelTop, dw: half, dh: logH * p },
-  ];
+  const mapTop = top + (bar ? spare - grow : spare / 2);
+  const panesTop = mapTop + side;
+  const t = BAR * p;
+  const statsX = x0 + t;
+  const logX = statsX + STATS_W * p + t;
+  const inY = panesTop + t;
+  const pane = (part: Part, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number): Blit => ({
+    part,
+    sx,
+    sy,
+    sw,
+    sh,
+    dx,
+    dy,
+    dw: sw * p,
+    dh: sh * p,
+  });
+  const blits: Blit[] = [{ part: 'view', ...rect(VIEW_SQUARE), dx: x0, dy: mapTop, dw: side, dh: side }];
+  if (split <= 72) {
+    // The Modern look's own seven rows: the members at the top, food and gold at the foot.
+    blits.push(pane('stats', STATS_X, 8, STATS_W, 48, statsX, inY));
+    blits.push(pane('stats', STATS_X, 56, STATS_W, 8, statsX, inY + (PANE_H - 8) * p));
+  } else blits.push(pane('stats', STATS_X, 8, STATS_W, PANE_H, statsX, inY));
+  // The party box's own top border over its lines: whatever it is titled (frame.ts borderTitle) with it.
+  blits.push(pane('stats', STATS_X, 0, STATS_W, BAR, statsX, panesTop));
+  blits.push(pane('log', LOG_X, LOG_FOOT - PANE_H, LOG_W, PANE_H, logX, inY));
+  const frames: Frame[] = [{ x: x0, y: panesTop, w: side, h: panesH, t, dividers: [logX - t] }];
+  const logPane: Rect = { x: logX - t, y: panesTop, w: (LOG_W + 2 * BAR) * p, h: panesH };
+  // The whole log, opened: in a frame of its own over the map, its foot the panes' foot.
+  let overlay: Presentation['overlay'] = null;
+  if (logOpen) {
+    const rows = LOG_FOOT - split;
+    const h = (rows + 2 * BAR) * p;
+    const frame: Frame = { x: logPane.x, y: panesTop + panesH - h, w: logPane.w, h, t, dividers: [] };
+    overlay = { frame, blit: pane('log', LOG_X, split, LOG_W, rows, logX, frame.y + t) };
+  }
   return {
     portrait: true,
     blits,
-    bar: bar ? { x: left, y: mapTop + side, w: width, h: top + height - (mapTop + side) } : null,
+    bar: bar ? { x: left, y: panesTop + panesH, w: width, h: top + height - (panesTop + panesH) } : null,
     barSide: false,
+    frames,
+    overlay,
+    logBox: overlay ? overlay.frame : logPane,
+    mapEdge: { x: x0 + (VIEW_SQUARE.w - BAR) * (side / VIEW_SQUARE.w), y: mapTop, w: BAR * (side / VIEW_SQUARE.w), h: side },
   };
 }
 
@@ -165,11 +240,19 @@ function rect(r: { x: number; y: number; w: number; h: number }): { sx: number; 
 
 /** The blit a point of the screen (EGA pixels) is shown in, or undefined. */
 export function blitOf(p: Presentation, x: number, y: number): Blit | undefined {
-  return p.blits.find((b) => x >= b.sx && x < b.sx + b.sw && y >= b.sy && y < b.sy + b.sh);
+  return [...(p.overlay ? [p.overlay.blit] : []), ...p.blits].find((b) => x >= b.sx && x < b.sx + b.sw && y >= b.sy && y < b.sy + b.sh);
 }
 
 /** A point of the canvas (its pixels) as the screen's (EGA pixels), with the part it lies in; null off the picture. */
 export function toScreen(p: Presentation, cx: number, cy: number): { x: number; y: number; part: Part } | null {
+  // The whole log open over the map: all of its box is the log's, its frame and all, none of it the map's under it.
+  const o = p.overlay;
+  if (o && cx >= o.frame.x && cy >= o.frame.y && cx < o.frame.x + o.frame.w && cy < o.frame.y + o.frame.h) {
+    const b = o.blit;
+    const x = Math.max(b.sx, Math.min(b.sx + b.sw - 1, b.sx + ((cx - b.dx) * b.sw) / b.dw));
+    const y = Math.max(b.sy, Math.min(b.sy + b.sh - 1, b.sy + ((cy - b.dy) * b.sh) / b.dh));
+    return { x, y, part: 'log' };
+  }
   for (const b of p.blits) {
     if (cx < b.dx || cy < b.dy || cx >= b.dx + b.dw || cy >= b.dy + b.dh) continue;
     return { x: b.sx + ((cx - b.dx) * b.sw) / b.dw, y: b.sy + ((cy - b.dy) * b.sh) / b.dh, part: b.part };

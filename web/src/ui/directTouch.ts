@@ -12,9 +12,13 @@
  *   up, the square tapped is aimed at and loosed).
  * - In a dungeon's first-person view, the view's left and right thirds turn the party, its middle steps ahead, and its
  *   foot back; with the whole-level map up, the map is walked as a town's is, a square at a time.
- * - In a menu, the line under the finger is barred as it moves, and chosen as it lifts there; a swipe turns a page of a
- *   long list; a tap outside the box backs out. A number's dial turns as a finger is dragged up and down over it.
+ * - In a menu, the line under the finger is barred as it moves, and chosen as it lifts there; a list too long to show
+ *   whole moves with the finger as a phone's lists do, and glides on a moment after a flick (lifted after it has moved,
+ *   nothing is chosen); a tap outside the box backs out. A number's dial turns as a finger is dragged up and down
+ *   over it.
  * - Where a way is asked, the square tapped from whoever acts gives it; where a member is, their line in the panel.
+ * - Upright, a tap on the log's pane opens the whole log over the map; the next tap anywhere closes it (on the log,
+ *   that is all it does).
  * - Anything else the game waits on, a tap goes on (A).
  *
  * Commands the finger cannot point at - Cast, Attack, Pass, the Pause menu - are the touch bar's (touchBar.ts).
@@ -26,7 +30,7 @@ import { arenaFree, combatantAt, onMonsterSide, snapTargets } from '../game/comb
 import { byCompass } from '../game/dungeonMap.ts';
 import { CF, type Game } from '../game/game.ts';
 import { npcOfActor } from '../game/town.ts';
-import { K, Pad, TOUCH, touchAt, touchPick } from '../game/io.ts';
+import { K, Pad, TOUCH, touchAt, touchPick, touchScroll } from '../game/io.ts';
 import type { Screen } from './screen.ts';
 import { cancelsTouch } from './touch.ts';
 
@@ -48,6 +52,14 @@ const SWIPE_MS = 420;
 /** How far a finger moves on a dial for each turn of it (CSS px): up and down by one, across by ten. */
 const DIAL_PX = 16;
 const DIAL_TEN_PX = 28;
+/**
+ * A flick of a long list: as fast as this at the lift (CSS px a millisecond), measured over the finger's last
+ * FLICK_MS; it glides on, slowing by FLICK_SLOWING a frame (of 16 ms) till it is slower than FLICK_STOP.
+ */
+const FLICK_FAST = 0.35;
+const FLICK_MS = 100;
+const FLICK_SLOWING = 0.94;
+const FLICK_STOP = 0.03;
 /** The most squares a walk to a tapped square takes, the way replanned at each. */
 const WALK_STEPS = 24;
 
@@ -163,10 +175,34 @@ interface Press {
   timer: ReturnType<typeof setTimeout> | null;
   /** Dragged on the map: choosing where to go (the way marked as it moves), never walking the way it points. */
   dragged: boolean;
+  /** A list too long to show whole, moving with the finger (menu.ts choose's touchScroll). */
+  list: ListDrag | null;
+  /** Down on the log: lifted there unmoved, the whole log opened (or closed). */
+  log: boolean;
   /** How much of a drag a dial has turned for already (CSS px). */
   dialX: number;
   dialY: number;
   moved: boolean;
+}
+
+/** A long list as the finger moves it: the lines it showed first when it went down, and shows now; the line barred. */
+interface ListDrag {
+  /** The list's title: a glide stops where the list is no longer up (another opened over it, or it was left). */
+  title: string;
+  top0: number;
+  /** Where the list stands, in lines, between whole ones (the list shows the nearest). */
+  top: number;
+  shown: number;
+  line: number;
+  /** A line's height on the page and the top of the first line shown (CSS px); the lines shown, and all there are. */
+  rowH: number;
+  firstY: number;
+  rows: number;
+  count: number;
+  /** Whether it has moved under the finger: lifted then, nothing is chosen. */
+  scrolled: boolean;
+  /** The finger's last places, for a flick. */
+  trail: { y: number; t: number }[];
 }
 
 /** A walk to a square tapped: where to (the map's squares), or after whom; and the step last given, to see it was taken. */
@@ -198,6 +234,8 @@ export class DirectTouch {
   /** The way marked over the map: where a finger down would walk, or where the party is walking. */
   private way: Way | null = null;
   private wayTimer: ReturnType<typeof setTimeout> | null = null;
+  /** A long list gliding on after a flick. */
+  private flick: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly g: Game,
@@ -222,7 +260,10 @@ export class DirectTouch {
     document.addEventListener('gesturestart', stop, { passive: false });
     document.addEventListener('dblclick', stop);
     // A key or a gamepad's button stops a walk where it is.
-    window.addEventListener('keydown', () => this.stopWalk());
+    window.addEventListener('keydown', () => {
+      this.stopWalk();
+      this.stopFlick();
+    });
     screen.wayShown = () => this.wayNow();
   }
 
@@ -345,6 +386,7 @@ export class DirectTouch {
     if (!e.isPrimary) return;
     e.preventDefault();
     this.stopWalk();
+    this.stopFlick();
     this.screen.canvas.setPointerCapture?.(e.pointerId);
     const mode = this.mode;
     const at = this.screen.pointAt(e.clientX, e.clientY);
@@ -359,15 +401,24 @@ export class DirectTouch {
       steering: false,
       timer: null,
       dragged: false,
+      list: null,
+      log: false,
       dialX: 0,
       dialY: 0,
       moved: false,
     };
     this.press = press;
+    if (this.screen.onLog(e.clientX, e.clientY)) {
+      press.log = true;
+      return;
+    }
+    // The whole log open, a tap elsewhere closes it - and goes on to do what it does.
+    this.screen.showLog(false);
     if ((mode === 'list' || mode === 'title') && at) {
       press.inBox = this.inBox(at.x, at.y);
       press.row = this.rowAt(at.x, at.y);
       if (press.row >= 0) this.pick(press.row, false);
+      if (mode === 'list') press.list = this.listDrag(e.clientY, press.row);
     }
     if (mode === 'command' && at) {
       // Where it would go, marked while the finger is down (and moved with it); held still, it walks the way it points.
@@ -382,7 +433,12 @@ export class DirectTouch {
     const dx = e.clientX - press.x;
     const dy = e.clientY - press.y;
     if (Math.abs(dx) + Math.abs(dy) > 8) press.moved = true;
+    if (press.log) return;
     const at = this.screen.pointAt(e.clientX, e.clientY);
+    if (press.list) {
+      this.dragList(press, e.clientY);
+      return;
+    }
     if (press.mode === 'list' || press.mode === 'title') {
       // The bar follows the finger, line to line; off the lines it stays where it was.
       const row = at ? this.rowAt(at.x, at.y) : -1;
@@ -433,6 +489,10 @@ export class DirectTouch {
     if (!press || e.pointerId !== press.id) return;
     this.press = null;
     if (press.timer) clearTimeout(press.timer);
+    if (press.log) {
+      if (!press.moved) this.screen.showLog();
+      return;
+    }
     if (press.steering) {
       this.screen.holds.letGo('touch');
       this.steerAt = null;
@@ -445,10 +505,15 @@ export class DirectTouch {
     const dx = e.clientX - press.x;
     const dy = e.clientY - press.y;
     const quick = performance.now() - press.t < SWIPE_MS;
+    if (press.list?.scrolled) {
+      // Moved under the finger: nothing chosen - unless flicked, it stands where it is, the bar on the line it was on.
+      this.flickList(press.list);
+      return;
+    }
     if (press.mode === 'list' || press.mode === 'title') {
       const more = this.g.menuShown?.more;
-      // A swipe up shows the next page of a long list, down the one before.
-      if (quick && Math.abs(dy) > SWIPE_PX && Math.abs(dy) > 1.5 * Math.abs(dx) && press.mode === 'list') {
+      // A swipe up shows the next page of a long list that does not move with the finger, down the one before.
+      if (quick && !press.list && Math.abs(dy) > SWIPE_PX && Math.abs(dy) > 1.5 * Math.abs(dx) && press.mode === 'list') {
         if (dy < 0 && more?.below) this.key(K.Right);
         else if (dy > 0 && more?.above) this.key(K.Left);
         return;
@@ -489,6 +554,73 @@ export class DirectTouch {
   }
 
   // --- Lists -----------------------------------------------------------------------
+
+  /** A long list's drag begun with the finger at `y` (CSS px) on line `line`; null for a list shown whole. */
+  private listDrag(y: number, line: number): ListDrag | null {
+    const m = this.g.menuShown;
+    const rows = m?.rows;
+    if (!m?.scrolls || !rows || rows.length < 2) return null;
+    const first = this.screen.rectOnPage(...rows[0].r);
+    const second = this.screen.rectOnPage(...rows[1].r);
+    if (!first || !second || second.y <= first.y) return null;
+    const top0 = rows[0].i;
+    return {
+      title: m.title,
+      top0,
+      top: top0,
+      shown: top0,
+      line: line >= 0 ? line : m.at,
+      rowH: second.y - first.y,
+      firstY: first.y,
+      rows: rows.length,
+      count: m.labels.length,
+      scrolled: false,
+      trail: [{ y, t: performance.now() }],
+    };
+  }
+
+  /** The list moved with the finger, now at `y` (CSS px): the line under it barred, as it moves with it. */
+  private dragList(press: Press, y: number): void {
+    const d = press.list!;
+    const now = performance.now();
+    d.trail.push({ y, t: now });
+    while (d.trail.length > 2 && now - d.trail[0].t > FLICK_MS) d.trail.shift();
+    d.top = Math.max(0, Math.min(d.count - d.rows, d.top0 + (press.y - y) / d.rowH));
+    const under = Math.floor((y - d.firstY) / d.rowH + d.top);
+    this.showList(d, under);
+  }
+
+  /** The list shown at the whole line nearest where it stands, the bar on `line` (or the nearest line in sight). */
+  private showList(d: ListDrag, line: number): void {
+    const top = Math.round(d.top);
+    const barred = Math.max(top, Math.min(top + d.rows - 1, line));
+    if (top !== d.top0) d.scrolled = true;
+    if (top === d.shown && barred === d.line) return;
+    d.shown = top;
+    d.line = barred;
+    this.key(touchScroll(top, barred));
+  }
+
+  /** Lifted after a flick: the list glides on, slowing, the bar kept in sight. */
+  private flickList(d: ListDrag): void {
+    const [a, b] = [d.trail[0], d.trail[d.trail.length - 1]];
+    let v = b.t > a.t ? (b.y - a.y) / (b.t - a.t) : 0; // CSS px a ms, down the page
+    if (Math.abs(v) < FLICK_FAST) return;
+    this.stopFlick();
+    this.flick = setInterval(() => {
+      const m = this.g.menuShown;
+      if (!m || m.title !== d.title || m.labels.length !== d.count) return this.stopFlick();
+      d.top = Math.max(0, Math.min(d.count - d.rows, d.top - (v * 16) / d.rowH));
+      this.showList(d, d.line);
+      v *= FLICK_SLOWING;
+      if (Math.abs(v) < FLICK_STOP || d.top <= 0 || d.top >= d.count - d.rows) this.stopFlick();
+    }, 16);
+  }
+
+  private stopFlick(): void {
+    if (this.flick !== null) clearInterval(this.flick);
+    this.flick = null;
+  }
 
   private rows(): { i: number; r: [number, number, number, number] }[] {
     return this.g.titleRows ?? this.g.menuShown?.rows ?? [];

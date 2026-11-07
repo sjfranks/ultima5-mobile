@@ -229,6 +229,8 @@ export class Game {
     box?: [number, number, number, number];
     /** Whether there is more of it above or below what shows: a swipe scrolls it. */
     more?: { above: boolean; below: boolean };
+    /** Longer than it shows, and dragged by a finger as a phone's lists are (io.ts touchScroll; menu.ts choose). */
+    scrolls?: true;
   } | null = null;
   /** The keys a tap stands for (io.ts TOUCH), typed at the next prompt that reads the keyboard. */
   touchKeys: number[] = [];

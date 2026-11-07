@@ -5,7 +5,7 @@
  * Act, Cast, Attack, Pass and the Pause menu at the command prompt; Back, and a page up or down, in a list; the
  * dial's steps; the aim's next target and Fire. Whatever the finger can point at on the game itself is left to it
  * (directTouch.ts); the bar holds the rest. It sits where the screen leaves room for it (presentation.ts): across the
- * foot of an upright phone, under the map, or up the side of one held sideways.
+ * foot of an upright phone, under the map and its panes, or up the side of one held sideways.
  *
  * Shown on a touch screen (or once a finger has touched one); a mouse and keyboard never see it.
  */

@@ -118,6 +118,23 @@ export function atOf(k: number): { x: number; y: number } | null {
   return k >= TOUCH_AT && k < TOUCH_AT + 0x100 ? { x: (k - TOUCH_AT) & 15, y: (k - TOUCH_AT) >> 4 } : null;
 }
 
+/**
+ * A long list dragged by a finger (touchScroll): the line it is to show at its top, and the line under the finger,
+ * barred - the list moving with the finger as a phone's lists do (menu.ts choose). Each up to 255.
+ */
+const TOUCH_SCROLL = 0x10000;
+
+/** The code for a list dragged to show line `top` first, the bar on line `line`. */
+export function touchScroll(top: number, line: number): number {
+  const clamp = (n: number): number => Math.max(0, Math.min(0xff, n));
+  return TOUCH_SCROLL + (clamp(top) << 8) + clamp(line);
+}
+
+/** The top and barred line a code says a list was dragged to (touchScroll), or null for any other code. */
+export function scrollOf(k: number): { top: number; line: number } | null {
+  return k >= TOUCH_SCROLL && k < TOUCH_SCROLL + 0x10000 ? { top: (k - TOUCH_SCROLL) >> 8, line: (k - TOUCH_SCROLL) & 0xff } : null;
+}
+
 /** A member drawn on the map: the figure's tile (an actor's, 0x100 on) and its tint, 0xRRGGBB (0 none). */
 export interface Figure {
   tile: number;

@@ -21,14 +21,17 @@ the Apple ][ tile set, and the box's painting, for the key art.
 This fork plays the same engine on a phone held either way up, with the
 finger on the game itself rather than a drawn controller.
 
-- **Upright, for one thumb**: the buttons run across the foot of the
-  screen, and the map's square sits on them, filling the width, frame,
-  moons and date and all - low enough that the thumb holding the phone
-  reaches every square. The party's panel and the log go above the map,
-  side by side, to be read and never under the thumb. On a tall phone the
-  spare height goes above them all, where a thumb does not reach. Away from
-  play - the title, the story, a picture - and on a phone held sideways,
-  the screen is shown whole.
+- **Upright, for one thumb**: the map's square fills the width, frame,
+  moons and date and all; under it, in one frame of two panes, the party
+  and the log's last nine lines; and under those the buttons, across the
+  foot. The panes are kept no taller than the party's lines, so the map
+  stays low enough for the thumb holding the phone - tap the log to read
+  all of it, opened over the map, and tap again to close it. On a tall
+  phone the spare height goes above everything, where a thumb does not
+  reach. The panes are framed in the look's own style: the Modern look's
+  wooden bars (in the frame's tone wherever the party is), or 1988's blue
+  with a white line round each. Away from play - the title, the story, a
+  picture - and on a phone held sideways, the screen is shown whole.
 - **Tap to walk and act.** A tap on a square beside the party steps there,
   or does what walking into it does: opens the door, talks to the
   townsman, strikes the foe, searches the chest. A tap further off walks
@@ -45,8 +48,9 @@ finger on the game itself rather than a drawn controller.
 - **Dungeons**: tap the view's left or right third to turn, its middle to
   step ahead, its foot to step back.
 - **Menus**: tap a line to choose it (the bar follows the finger, and the
-  line is chosen as it lifts); swipe a long list for a page; tap outside a
-  box to back out. Drag up and down on a number to dial it. Where a member
+  line is chosen as it lifts). A list too long to show whole moves with
+  the thumb as a phone's lists do, and glides on after a flick; lifting
+  after it has moved chooses nothing. Tap outside a box to back out. Drag up and down on a number to dial it. Where a member
   is asked for, tap their line in the panel (or step to them with the bar's
   arrows and Choose); where a way is asked, tap the
   square. At the gypsy's bowls, tap a side to walk to its bowl, and tap it

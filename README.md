@@ -58,6 +58,10 @@ finger on the game itself rather than a drawn controller.
   a second tap on the same square does it (Settings, **Fight taps: At
   once**, does it at the first); where a crosshair is up, tap what to aim
   at.
+- **The harpsichord**: walk into it, or choose Play beside it, and its
+  keyboard opens as wide as the map, each key numbered (the tune is told
+  in numbers). A finger plays the key it comes down on, at once, and each
+  it slides onto; Leave on the bar gets up from it.
 - **Dungeons**: tap the view's left or right third to turn, its middle to
   step ahead, its foot to step back.
 - **Menus**: tap a line to choose it (the bar follows the finger, and the

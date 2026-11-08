@@ -5,7 +5,8 @@
  * through at Lord British's in his chamber, opens the way to the sandalwood box. 1988 took the notes as the number
  * keys, the player seated at it; the port also gives it a keyboard of its own (the port's), over the view - the d-pad
  * along nine keys, A to play one, B to get up - from Play or by walking into the harpsichord from any side. Each note
- * sounds as it is played, its number rising from its key and fading.
+ * sounds as it is played, its number rising from its key and fading. Played by touch (the mobile fork's), the keyboard
+ * is as wide as the view, and a finger plays the key it comes down on, and each it slides onto (ui/directTouch.ts).
  *
  * And a help for one who knows the tune (the port's): where Lord Kenneth's lesson is among the clues heard - "the
  * first phrase goes 678 987 8767653" - a gold dot on the tune's next key, at Lord British's harpsichord alone, while
@@ -113,8 +114,11 @@ export async function playHarpsichord(g: Game): Promise<number> {
   const { box, restoreView } = await import('./menu.ts');
   const { menuKey, PAUSED } = await import('./input.ts');
   const now = (): number => g.p.now?.() ?? 0;
+  // Played by touch, a box as wide as the view's, its keys wide enough for a finger (io.ts harpKeys).
+  const wide = g.lastSource === 'touch';
   const frame = (): HarpView => {
-    box(g, 'Harpsichord', 12, 6);
+    if (wide) box(g, 'Harpsichord', 21, 9);
+    else box(g, 'Harpsichord', 12, 6);
     const w = g.text.win;
     // The box's lines under its title: the keys' place, in EGA pixels.
     return {
@@ -136,6 +140,7 @@ export async function playHarpsichord(g: Game): Promise<number> {
     for (;;) {
       view = { ...view, dot: hintKey(g), pops: view.pops.filter((p) => now() - p.t < 1000) };
       g.draw.harpsichord?.(view);
+      g.harpView = view;
       const k = await menuKey(g, DIGITS);
       if (k === PAUSED) {
         view = { ...frame(), at: view.at };
@@ -156,6 +161,7 @@ export async function playHarpsichord(g: Game): Promise<number> {
       }
     }
   } finally {
+    g.harpView = null;
     g.sound.setHeld('harpsichord', false);
     g.draw.harpsichord?.(null);
     await restoreView(g);

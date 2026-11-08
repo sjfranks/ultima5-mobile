@@ -11,7 +11,7 @@ import { Holds } from './holds.ts';
 import { signInk, tinted } from './colours.ts';
 import type { Font } from '../data/font.ts';
 import type { Appearance } from '../game/appearance.ts';
-import { K, type Draw, type Effects, type HarpView, type Platform, type Sound } from '../game/io.ts';
+import { harpKeys, K, type Draw, type Effects, type HarpView, type Platform, type Sound } from '../game/io.ts';
 import { bitPicture, picture, type Picture } from '../data/images.ts';
 import { TileAnimator } from './animate.ts';
 import { menuUp } from './pageMenu.ts';
@@ -983,10 +983,9 @@ export class Screen implements Platform {
     // dropped every letter drawn after it by most of a row.
     ctx.save();
     ctx.setTransform(fx, 0, 0, fy, ox, oy);
-    const KW = 10;
-    const KH = 28;
-    const kx = v.x + Math.floor((v.w - KW * 9) / 2);
-    const ky = v.y + 14;
+    // The keys' place and size (io.ts harpKeys), and what is drawn on them in proportion (laid out at ten by 28).
+    const { x: kx, y: ky, w: KW, h: KH } = harpKeys(v);
+    const k = KW / 10;
     const pal = ega
       ? {
           gap: '#000000',
@@ -997,6 +996,7 @@ export class Screen implements Platform {
           bar: '#55ffff',
           dot: '#ffff55',
           pop: '#ffff55',
+          number: '#555555',
         }
       : {
           gap: '#1a1206',
@@ -1007,6 +1007,7 @@ export class Screen implements Platform {
           bar: '#67cbec',
           dot: '#e8b030',
           pop: '#fff4c2',
+          number: '#8a7c62',
         };
     for (let i = 0; i < 9; i++) {
       const down = v.pressed?.key === i && now - v.pressed.t < 160 ? 1 : 0;
@@ -1018,7 +1019,7 @@ export class Screen implements Platform {
       if (i === v.at) {
         ctx.fillStyle = pal.bar;
         ctx.globalAlpha = 0.35;
-        ctx.fillRect(x0 + 1, ky + KH - 9, KW - 2, 8);
+        ctx.fillRect(x0 + 1, ky + KH - Math.round(9 * k), KW - 2, Math.round(8 * k));
         ctx.globalAlpha = 1;
         ctx.strokeStyle = pal.bar;
         ctx.lineWidth = 1;
@@ -1027,17 +1028,20 @@ export class Screen implements Platform {
       if (i === v.dot) {
         ctx.fillStyle = pal.dot;
         ctx.beginPath();
-        ctx.arc(x0 + KW / 2, ky + KH - 5 + down, 1.8, 0, Math.PI * 2);
+        ctx.arc(x0 + KW / 2, ky + KH - 5 * k + down, 1.8 * k, 0, Math.PI * 2);
         ctx.fill();
       }
+      // On the wide keyboard (played by touch, with no number keys to read the tune by), each key's number at its foot.
+      if (KW >= 14) this.harpDigit(ctx, ega, i, x0 + KW / 2, ky + KH - 13 * k + down, pal.number);
     }
+    const [bw, bh] = [Math.round(6 * k), Math.round(17 * k)];
     for (const b of [0, 1, 3, 4, 5, 7]) {
-      const bx = kx + (b + 1) * KW - 3;
+      const bx = kx + (b + 1) * KW - Math.round(bw / 2);
       ctx.fillStyle = pal.black;
-      ctx.fillRect(bx, ky, 6, 17);
+      ctx.fillRect(bx, ky, bw, bh);
       if (!ega) {
         ctx.fillStyle = pal.shine;
-        ctx.fillRect(bx + 1, ky, 1, 15);
+        ctx.fillRect(bx + 1, ky, 1, bh - 2);
       }
     }
     for (const p of v.pops) {
@@ -1046,22 +1050,26 @@ export class Screen implements Platform {
       ctx.globalAlpha = 1 - age * age;
       const cx = kx + p.key * KW + KW / 2;
       const top = ky - 9 - age * 4;
-      if (ega) {
-        ctx.fillStyle = pal.pop;
-        const code = 0x31 + p.key;
-        for (let r = 0; r < 8; r++)
-          for (let c = 0; c < 8; c++)
-            if (this.glyphs.rows[code * 8 + r] & (0x80 >> c)) ctx.fillRect(Math.round(cx - 4) + c, Math.round(top) + r, 1, 1);
-      } else {
-        ctx.font = `8px "${FACES.mono.family}"`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.fillStyle = pal.pop;
-        ctx.fillText(String(p.key + 1), cx, top);
-      }
+      this.harpDigit(ctx, ega, p.key, cx, top, pal.pop);
       ctx.globalAlpha = 1;
     }
     ctx.restore();
+  }
+
+  /** Key `key`'s number (1 to 9), centred on `cx` from `top`: the PC (1988) look's in IBM.CH, the Standard look's in its own. */
+  private harpDigit(ctx: CanvasRenderingContext2D, ega: boolean, key: number, cx: number, top: number, colour: string): void {
+    ctx.fillStyle = colour;
+    if (ega) {
+      const code = 0x31 + key;
+      for (let r = 0; r < 8; r++)
+        for (let c = 0; c < 8; c++)
+          if (this.glyphs.rows[code * 8 + r] & (0x80 >> c)) ctx.fillRect(Math.round(cx - 4) + c, Math.round(top) + r, 1, 1);
+      return;
+    }
+    ctx.font = `8px "${FACES.mono.family}"`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(String(key + 1), cx, top);
   }
 
   /** Whether the story pages' fonts are to hand; until they are (or if they never are) the pages are set as in 1988. */

@@ -21,6 +21,8 @@
  * - Where a way is asked, the square tapped from whoever acts gives it; where a member is, their line in the panel.
  * - Upright, a tap on the log's pane opens the whole log over the map; the next tap anywhere closes it (on the log,
  *   that is all it does).
+ * - At the harpsichord, a finger plays the key it comes down on, at once, and each it slides onto after, as a
+ *   keyboard's are played (harpsichord.ts).
  * - Anything else the game waits on, a tap goes on (A).
  *
  * Commands the finger cannot point at - Cast, Attack, Pass, the Pause menu - are the touch bar's (touchBar.ts).
@@ -32,7 +34,7 @@ import { arenaFree, combatantAt, onMonsterSide, snapTargets } from '../game/comb
 import { byCompass } from '../game/dungeonMap.ts';
 import { CF, type Game } from '../game/game.ts';
 import { npcOfActor } from '../game/town.ts';
-import { K, Pad, TOUCH, touchAt, touchPick, touchScroll } from '../game/io.ts';
+import { harpKeys, K, Pad, TOUCH, touchAt, touchPick, touchScroll } from '../game/io.ts';
 import { T } from '../game/tiles.ts';
 import { tileAt } from '../game/world.ts';
 import type { Screen } from './screen.ts';
@@ -68,7 +70,7 @@ const FLICK_STOP = 0.03;
 const WALK_STEPS = 24;
 
 /** What the game waits on, as a tap reads it. */
-export type TouchMode = 'busy' | 'answers' | 'title' | 'list' | 'dial' | 'aim' | 'member' | 'way' | 'command' | 'wait';
+export type TouchMode = 'busy' | 'answers' | 'title' | 'list' | 'dial' | 'aim' | 'member' | 'way' | 'command' | 'harp' | 'wait';
 
 /** What the game is waiting on now, as a tap reads it. */
 export function touchMode(g: Game, screen: Pick<Screen, 'waiting'>): TouchMode {
@@ -77,6 +79,7 @@ export function touchMode(g: Game, screen: Pick<Screen, 'waiting'>): TouchMode {
   // Under sail the ship goes on by itself, the game looking for a key as it does (outdoors.ts nextCommand).
   if (g.s.sailing !== 0 && g.inPlay && g.outdoors && !g.menuShown && !g.commandPrompt && !screen.waiting) return 'command';
   if (!screen.waiting) return 'busy';
+  if (g.harpView) return 'harp';
   if (g.awaitingCommand && g.commandPrompt) return 'command';
   if (g.menuShown) return g.menuShown.kind === 'dial' ? 'dial' : 'list';
   if (g.s.crosshair === 1 && g.aimReach > 0) return 'aim';
@@ -197,6 +200,8 @@ interface Press {
   list: ListDrag | null;
   /** Down on the log: lifted there unmoved, the whole log opened (or closed). */
   log: boolean;
+  /** The harpsichord's key under the finger, played as it came onto it; -1 off the keys. */
+  harp: number;
   /** How much of a drag a dial has turned for already (CSS px). */
   dialX: number;
   dialY: number;
@@ -432,6 +437,7 @@ export class DirectTouch {
       at: at ? { x: at.x, y: at.y } : null,
       list: null,
       log: false,
+      harp: -1,
       dialX: 0,
       dialY: 0,
       moved: false,
@@ -443,6 +449,10 @@ export class DirectTouch {
     }
     // The whole log open, a tap elsewhere closes it - and goes on to do what it does.
     this.screen.showLog(false);
+    if (mode === 'harp') {
+      this.playHarp(press, at);
+      return;
+    }
     if ((mode === 'list' || mode === 'title') && at) {
       press.inBox = this.inBox(at.x, at.y);
       press.row = this.rowAt(at.x, at.y);
@@ -464,6 +474,10 @@ export class DirectTouch {
     if (Math.abs(dx) + Math.abs(dy) > 8) press.moved = true;
     if (press.log) return;
     const at = this.screen.pointAt(e.clientX, e.clientY);
+    if (press.mode === 'harp') {
+      this.playHarp(press, at);
+      return;
+    }
     if (press.list) {
       this.dragList(press, e.clientY);
       return;
@@ -524,6 +538,8 @@ export class DirectTouch {
       if (!press.moved) this.screen.showLog();
       return;
     }
+    // At the harpsichord the note was played as the finger came onto its key: nothing more as it lifts.
+    if (press.mode === 'harp') return;
     if (press.steering) {
       this.screen.holds.letGo('touch');
       this.steerAt = null;
@@ -582,6 +598,23 @@ export class DirectTouch {
     this.steerAt = null;
     this.press = null;
     this.setWay(null);
+  }
+
+  // --- The harpsichord ---------------------------------------------------------------
+
+  /**
+   * The finger at `at` over the harpsichord's keyboard: the key under it played where it has just come onto it (its
+   * number key, as 1988 plays it). Anywhere up or down its box over a key is that key; off them, nothing - and coming
+   * back onto one plays it again.
+   */
+  private playHarp(press: Press, at: { x: number; y: number } | null): void {
+    const v = this.g.harpView;
+    const k = v && harpKeys(v);
+    const on = v && k && at && at.y >= v.y && at.y < v.y + v.h && at.x >= k.x && at.x < k.x + 9 * k.w;
+    const key = on ? Math.floor((at.x - k.x) / k.w) : -1;
+    if (key === press.harp) return;
+    press.harp = key;
+    if (key >= 0) this.key(0x31 + key);
   }
 
   // --- Lists -----------------------------------------------------------------------

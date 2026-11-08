@@ -241,8 +241,9 @@ function wrap(text: string, width: number): string[] {
 async function start(): Promise<void> {
   const canvas = document.getElementById('screen') as HTMLCanvasElement;
   canvasNotice(canvas, 'Loading...');
-  // The boot screen over the notice, as soon as it comes.
-  const boot = bootScreen(canvas);
+  // The boot screen over the notice, as soon as it comes (a mod's has none: the painting is Ultima V's box).
+  if (MOD) document.title = 'Test';
+  const boot = MOD ? Promise.resolve(async () => {}) : bootScreen(canvas);
   // The lettering comes in a moment, from the port's own files; the notice is drawn again in it (where the boot screen
   // did not come).
   const font = loadStandardFont();
@@ -308,6 +309,8 @@ async function start(): Promise<void> {
   g.hooks.quit = appQuit(location.protocol, () => window.close(), capacitor);
   g.ool.under.set(files.get('INIT.OOL').subarray(0, 256));
   g.drawCombatMarks = () => drawCombatMarks(g);
+  // A mod's map closer upright (presentation.ts zoomed), but in a fight, whose whole field is to be seen.
+  if (MOD) screen.zoomable = () => g.inPlay && g.s.mapId !== 0xff;
   (window as unknown as { u5: unknown }).u5 = { g, screen };
   canvas.focus();
   const params = new URLSearchParams(location.search);

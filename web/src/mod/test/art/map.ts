@@ -195,7 +195,30 @@ const brick =
     p.specks(10, light);
   };
 const stoneWall = brick(C.grey, C.dark, C.white);
-const wall = brick(C.dark, C.black, C.grey);
+/** The Hollow's rock: boulders, lit from above. */
+const caveRock: Art = (p) => {
+  p.fill(C.black);
+  const boulders: [number, number, number][] = [
+    [0, 0, 7],
+    [7, 1, 9],
+    [2, 7, 8],
+    [10, 9, 6],
+    [-2, 11, 5],
+    [12, -2, 5],
+  ];
+  for (const [bx, by, n] of boulders) {
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const dx = x - (n - 1) / 2;
+        const dy = y - (n - 1) / 2;
+        if (dx * dx + dy * dy > (n / 2) ** 2) continue;
+        const lit = dx + dy < -n / 3;
+        const shade = dx + dy > n / 3;
+        p.set((bx + x + 16) % 16, (by + y + 16) % 16, lit ? C.grey : shade ? C.black : p.rnd(5) ? C.dark : C.brown);
+      }
+    }
+  }
+};
 const rock: Art = (p) => {
   p.fill(C.dark).specks(40, C.black).specks(20, C.brown).specks(10, C.grey);
   p.line(2, 3, 6, 6, C.black).line(9, 1, 12, 7, C.black).line(4, 11, 11, 13, C.black);
@@ -226,24 +249,26 @@ const on =
   };
 
 const COUNTER = [
-  'nnnnnnnnnnnnnnnn',
   'yyyyyyyyyyyyyyyy',
+  'nyynnnnnnnnnnnyn',
   'nnnnnnnnnnnnnnnn',
+  'nnnnnnndnnnnnnnn',
+  'nnnnnnnnnnnnnnnn',
+  'nnndnnnnnnnnnnnn',
+  'nnnnnnnnnnnndnnn',
   'nnnnnnnnnnnnnnnn',
   'dddddddddddddddd',
-  'n  n        n  n',
-  'n  n        n  n',
-  'n  n        n  n',
-  'd  d        d  d',
+  'dd            dd',
+  'kk            kk',
 ];
-const counter = on(woodFloor, COUNTER, { n: C.brown, y: C.yellow, d: C.dark }, 0, 4);
+const counter = on(woodFloor, COUNTER, { n: C.brown, y: C.yellow, d: C.dark, k: C.black }, 0, 3);
 const counterWest: Art = (p) => {
   counter(p);
-  p.rect(0, 4, 1, 5, C.dark);
+  p.rect(0, 3, 1, 9, C.dark);
 };
 const counterEast: Art = (p) => {
   counter(p);
-  p.rect(15, 4, 1, 5, C.dark);
+  p.rect(15, 3, 1, 9, C.dark);
 };
 const CHAIR = ['  nnnnnn  ', '  nyyyyn  ', '  nnnnnn  ', '  n    n  ', '  d    d  '];
 const chairS = on(woodFloor, ['  dddddd  ', '  dnnnnd  ', ...CHAIR], { n: C.brown, y: C.yellow, d: C.dark }, 3, 5);
@@ -341,26 +366,29 @@ const fountain =
     cobbles(p);
     p.draw(
       [
-        ' wwwwwwwwwwwwww ',
-        'wwBBBBBBBBBBBBww',
-        'wBBBCBBBBBBCBBBw',
-        'wBBBBBBBBBBBBBBw',
+        '   wwwwwwwwww   ',
+        '  wWBBBBBBBBWw  ',
+        ' wWBBBCBBBBCBWw ',
+        'wWBBBBBBBBBBBBWw',
         'wBBCBBBBBBBBCBBw',
+        'wBBBBBBBBBBBBBBw',
+        'wBBBBBCBBBBBBBBw',
         'wwBBBBBBBBBBBBww',
         ' wwwwwwwwwwwwww ',
+        '  dddddddddddd  ',
       ],
-      { w: C.grey, B: C.lblue, C: C.lcyan },
+      { w: C.grey, W: C.white, B: C.lblue, C: C.lcyan, d: C.dark },
       0,
-      8,
+      5,
     );
-    p.rect(7, 4, 2, 7, C.grey);
+    p.rect(7, 3, 2, 7, C.grey).rect(6, 3, 4, 1, C.white);
     const spray = [
       ['  C  C  ', ' C CC C ', 'C  CC  C'],
       [' C    C ', '  CCCC  ', ' C CC C '],
       ['C C  C C', ' C CC C ', '  CCCC  '],
       ['   CC   ', ' CC  CC ', 'C  CC  C'],
     ][frame];
-    p.draw(spray, { C: C.lcyan }, 4, 1 + (frame % 2));
+    p.draw(spray, { C: C.lcyan }, 4, frame % 2);
   };
 const well = on(
   grass,
@@ -625,7 +653,7 @@ const ART: Record<number, Art> = {
   0x4c: rock,
   0x4d: stoneWall,
   0x4e: stoneWall,
-  0x4f: wall,
+  0x4f: caveRock,
   0x58: anvil,
   0x5b: plant,
   0x5c: shelf,

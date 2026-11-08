@@ -731,7 +731,11 @@ export class Screen implements Platform {
     this.base.putImageData(this.image, 0, 0);
     const ctx = this.ctx;
     // Where the screen goes (presentation.ts): whole, or in play on an upright screen taken apart.
-    const p = present(w, h, this.playFrame(), this.panelSplit(), this.insets, this.barDepth(), this.logOpen, this.pane);
+    const letters: Letter[] = [...this.fb.lettersShown(), ...this.fb.revealing];
+    // A mod's map closer (presentation.ts zoomed): not while anything is written over it, which the closer view would
+    // cut (a menu, a box of speech, the harpsichord's keys), nor in a fight, whose field is all to be seen.
+    const zoom = (this.zoomable?.() ?? false) && !this.harp && !letters.some((l) => l.x >= 8 && l.x < 184 && l.y >= 8 && l.y < 184);
+    const p = present(w, h, this.playFrame(), this.panelSplit(), this.insets, this.barDepth(), this.logOpen, this.pane, zoom);
     if (!p.portrait) this.logOpen = false;
     const was = this.presented;
     this.presented = p;
@@ -748,7 +752,6 @@ export class Screen implements Platform {
     for (const f of p.frames) this.drawFrame(ctx, f);
     for (const b of p.blits) this.drawBlit(ctx, b);
     if (p.mapEdge) this.squareMapEdge(ctx, p.mapEdge);
-    const letters: Letter[] = [...this.fb.lettersShown(), ...this.fb.revealing];
     const marks = this.fb.marksShown();
     this.readLog(letters, p);
     this.drawLetters(ctx, p.blits, letters, marks, p.blits.length > 1);
@@ -1789,6 +1792,8 @@ export class Screen implements Platform {
     return this.look === 'standard' && this.standard ? this.standard : null;
   }
   private inGame = false;
+  /** Whether the map may be shown closer, upright (a mod's: main.ts); unset, never. */
+  zoomable: (() => boolean) | null = null;
 
   /** Figures under a light (the dungeon map's stone in its dungeon's), by the figure and the light, made once each. */
   private readonly tintedFigures = new WeakMap<Uint32Array, Map<number, Uint32Array>>();

@@ -114,12 +114,14 @@ export function present(
   bar = 0,
   logOpen = false,
   pane: Pane = 'log',
+  zoom = false,
 ): Presentation {
   const left = insets.left;
   const top = insets.top;
   const width = Math.max(1, w - insets.left - insets.right);
   const height = Math.max(1, h - insets.top - insets.bottom);
   const portrait = height > width * 1.15;
+  if (portrait && play && zoom) return zoomed(left, top, width, height, split, bar, logOpen, pane);
   if (portrait && play) return upright(left, top, width, height, split, bar, logOpen, pane);
   return whole(left, top, width, height, portrait, bar);
 }
@@ -245,6 +247,80 @@ function upright(
     logBox: pane !== 'log' ? null : overlay ? overlay.frame : logPane,
     tabs,
     mapEdge: { x: x0 + (VIEW_SQUARE.w - BAR) * p, y: mapTop, w: BAR * p, h: side },
+  };
+}
+
+/**
+ * Zoomed (a mod's, src/mod): upright, the map closer - eight squares across the display's width, the party's square in
+ * the middle (half a square at either side), and as many of its eleven rows as the height lets it keep (eleven, nine
+ * or seven, the party's in the middle), in the screen's own frame - and the pane under it as upright has it.
+ */
+const ZOOM_X = 32;
+const ZOOM_W = 128;
+/** The zoomed map's width in EGA pixels: a border, eight squares, a border. */
+const ZOOM_SIDE = BAR + ZOOM_W + BAR;
+
+function zoomed(
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+  split: number,
+  bar: number,
+  logOpen: boolean,
+  pane: Pane,
+): Presentation {
+  const room = height - bar;
+  // The pane as wide as the display, at the scale upright gives it.
+  const pp = Math.min(width, room / (1 + PANES_H / VIEW_SQUARE.w)) / VIEW_SQUARE.w;
+  const paneH = PANES_H * pp;
+  const paneW = VIEW_SQUARE.w * pp;
+  // The map at the display's width, with the most rows that fit over the pane; at seven, smaller if it must be.
+  let pm = width / ZOOM_SIDE;
+  let rows = 11;
+  while (rows > 7 && (2 * BAR + rows * 16) * pm + paneH > room) rows -= 2;
+  if ((2 * BAR + rows * 16) * pm + paneH > room) pm = (room - paneH) / (2 * BAR + rows * 16);
+  const mapW = ZOOM_SIDE * pm;
+  const mapH = (2 * BAR + rows * 16) * pm;
+  const spare = Math.max(0, room - mapH - paneH);
+  const grow = bar ? Math.min(spare, bar * BAR_GROWTH) : 0;
+  const mapTop = top + (bar ? spare - grow : spare / 2);
+  const mapX = left + (width - mapW) / 2;
+  const r0 = 96 - (rows * 16) / 2;
+  const across: [number, number, number][] = [
+    [0, BAR, mapX],
+    [ZOOM_X, ZOOM_W, mapX + BAR * pm],
+    [VIEW_SQUARE.w - BAR, BAR, mapX + (BAR + ZOOM_W) * pm],
+  ];
+  const down: [number, number, number][] = [
+    [0, BAR, mapTop],
+    [r0, rows * 16, mapTop + BAR * pm],
+    [VIEW_SQUARE.h - BAR, BAR, mapTop + (BAR + rows * 16) * pm],
+  ];
+  // The squares first (the blit the map's actors and marks are drawn through), then the frame round them.
+  const map: Blit[] = [];
+  for (const [sy, sh, dy] of down) {
+    for (const [sx, sw, dx] of across) map.push({ part: 'view', sx, sy, sw, sh, dx, dy, dw: sw * pm, dh: sh * pm });
+  }
+  map.unshift(...map.splice(4, 1));
+  // The pane, as upright lays it out under a map of its own width.
+  const under = upright(left, top, width, height, split, bar, logOpen, pane);
+  const shiftY = mapTop + mapH - (under.frames[0]?.y ?? 0);
+  const shiftX = left + (width - paneW) / 2 - (under.frames[0]?.x ?? 0);
+  const move = <R extends { x: number; y: number }>(r: R): R => ({ ...r, x: r.x + shiftX, y: r.y + shiftY });
+  const moveBlit = (b: Blit): Blit => ({ ...b, dx: b.dx + shiftX, dy: b.dy + shiftY });
+  const overlay = under.overlay ? { frame: move(under.overlay.frame), blit: moveBlit(under.overlay.blit) } : null;
+  const frames = under.frames.map((f) => ({ ...move(f), dividers: f.dividers.map((d) => d + shiftX) }));
+  return {
+    portrait: true,
+    blits: [...map, ...under.blits.filter((b) => b.part !== 'view').map(moveBlit)],
+    bar: bar ? { x: left, y: mapTop + mapH + paneH, w: width, h: top + height - (mapTop + mapH + paneH) } : null,
+    barSide: false,
+    frames,
+    overlay,
+    logBox: under.logBox ? (under.overlay ? overlay!.frame : move(under.logBox)) : null,
+    tabs: under.tabs ? move(under.tabs) : null,
+    mapEdge: { x: mapX + (BAR + ZOOM_W) * pm, y: mapTop, w: BAR * pm, h: mapH },
   };
 }
 

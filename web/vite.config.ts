@@ -97,9 +97,13 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: 'prompt',
       manifest: {
-        name: 'Ultima V',
-        short_name: 'Ultima V',
-        description: 'Ultima V: Warriors of Destiny, on a new engine, with your own copy of the game',
+        // A mod (src/mod) is a game of its own: Test, with VITE_MOD=test.
+        name: process.env.VITE_MOD === 'test' ? 'Test' : 'Ultima V',
+        short_name: process.env.VITE_MOD === 'test' ? 'Test' : 'Ultima V',
+        description:
+          process.env.VITE_MOD === 'test'
+            ? 'Test: a tiny adventure on the Ultima V engine, made of its own files'
+            : 'Ultima V: Warriors of Destiny, on a new engine, with your own copy of the game',
         display: 'standalone',
         // Either way up: held upright, the map fills the width and the party and the log go under it (presentation.ts).
         orientation: 'any',

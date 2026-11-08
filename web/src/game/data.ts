@@ -12,13 +12,23 @@ import { DataOvl } from '../data/dataOvl.ts';
 import { GameFiles } from '../data/files.ts';
 import { readLocations, type Location } from '../data/maps.ts';
 
+/**
+ * A mod's words for DATA.OVL (src/mod/ovl.ts): MODTEXT.JSON, a list of [data-segment offset, string] pairs, read in
+ * place of the strings at those offsets. None in the DOS game's files.
+ */
+export function modTexts(files: GameFiles): Map<number, string> | null {
+  if (!files.has('MODTEXT.JSON')) return null;
+  const pairs = JSON.parse(new TextDecoder().decode(files.get('MODTEXT.JSON'))) as [number, string][];
+  return new Map(pairs);
+}
+
 export class GameData {
   readonly ovl: DataOvl;
   readonly locations: Location[];
   private readonly strings = new Map<number, string>();
 
   constructor(readonly files: GameFiles) {
-    this.ovl = new DataOvl(files.get('DATA.OVL'));
+    this.ovl = new DataOvl(files.get('DATA.OVL'), modTexts(files));
     this.locations = readLocations(this.ovl);
   }
 

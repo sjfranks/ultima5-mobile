@@ -20,6 +20,7 @@ import { Save } from './game/save.ts';
 import { currentCharacter, localSave, restore } from './game/storage.ts';
 import { watchOtherWindows } from './game/otherWindows.ts';
 import { Intro, unmadeAvatar } from './game/intro.ts';
+import { MOD, modOptions } from './mod/active.ts';
 import { Screen } from './ui/screen.ts';
 import { installPageHooks } from './ui/pageHooks.ts';
 import { PcSound } from './ui/sound.ts';
@@ -251,7 +252,8 @@ async function start(): Promise<void> {
   });
   // The tile art, while the game's files are found: all of it is had before the notice goes.
   const art = loadStandardArt(font);
-  const files = await gameFiles();
+  // A mod (src/mod) makes its own files: none of the player's are asked for.
+  const files = MOD === 'test' ? (await import('./mod/test/build.ts')).buildTestFiles() : await gameFiles();
   await lettering;
   const data = new GameData(files);
   const tiles = lzwDecompress(files.get('TILES.16'));
@@ -264,6 +266,7 @@ async function start(): Promise<void> {
   // The latest character's settings (characters.ts): the title shows their look and plays their music.
   currentCharacter();
   g.options = loadOptions();
+  if (MOD) modOptions(g.options);
   // ?ux= and ?tiles= in development (the tiles page's view of a place): the look for this page alone, not saved.
   if (import.meta.env.DEV) {
     const { lookAsked } = await import('./game/devStarts.ts');
@@ -315,6 +318,9 @@ async function start(): Promise<void> {
   if (import.meta.env.DEV && params.has('play')) {
     if (saved && !params.has('new')) restore(g, saved);
     else unmadeAvatar(g);
+  } else if (MOD === 'test') {
+    const { testIntro } = await import('./mod/test/intro.ts');
+    await testIntro(g);
   } else {
     const intro = new Intro(g);
     intro.prepare();

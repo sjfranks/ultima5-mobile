@@ -12,7 +12,14 @@ import { u16 } from './files.ts';
 const BASE = 0x10;
 
 export class DataOvl {
-  constructor(readonly data: Uint8Array) {}
+  /**
+   * A mod's own words (src/mod): strings by data-segment offset, read before the file's - so a mod's message can be
+   * longer than the one it replaces without running into the next.
+   */
+  constructor(
+    readonly data: Uint8Array,
+    readonly texts: ReadonlyMap<number, string> | null = null,
+  ) {}
 
   byte(ds: number): number {
     return this.data[ds + BASE];
@@ -32,6 +39,8 @@ export class DataOvl {
 
   /** The NUL-terminated string at a data-segment offset. */
   string(ds: number): string {
+    const own = this.texts?.get(ds);
+    if (own !== undefined) return own;
     let end = ds + BASE;
     while (end < this.data.length && this.data[end] !== 0) end++;
     return String.fromCharCode(...this.data.subarray(ds + BASE, end));

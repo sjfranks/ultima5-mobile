@@ -24,7 +24,8 @@ export class OvlBuilder {
 
   private claim(ds: number, length: number, what: string): void {
     for (const [at, n, name] of this.written) {
-      if (ds < at + n && at < ds + length) throw new Error(`DATA.OVL ${what} at 0x${ds.toString(16)} overlaps ${name} at 0x${at.toString(16)}`);
+      if (ds < at + n && at < ds + length)
+        throw new Error(`DATA.OVL ${what} at 0x${ds.toString(16)} overlaps ${name} at 0x${at.toString(16)}`);
     }
     this.written.push([ds, length, what]);
   }
@@ -65,6 +66,11 @@ export class OvlBuilder {
       strings.map((s) => this.own(s)),
       what,
     );
+  }
+
+  /** Every offset written, and how many bytes: for the audit (data/dataOvl.ts). */
+  known(): [number, number][] {
+    return this.written.map(([at, n]) => [at, n]);
   }
 
   /** MODTEXT.JSON. */

@@ -21,6 +21,9 @@ import { LOOKS } from './looks.ts';
 
 const LEVEL = 1024;
 
+/** What the last build wrote of DATA.OVL (the audit's, data/dataOvl.ts). */
+export let knownOvl: [number, number][] = [];
+
 export function buildTestFiles(): GameFiles {
   const files = new GameFiles();
   // The world: the sea, and the island in it.
@@ -66,6 +69,7 @@ export function buildTestFiles(): GameFiles {
   const shoppe = testShops(ovl);
   files.set('SHOPPE.DAT', shoppe);
   files.set('DATA.OVL', ovl.data);
+  knownOvl = ovl.known();
   files.set('MODTEXT.JSON', ovl.textFile());
 
   // The fields fights are fought on.
@@ -147,9 +151,12 @@ function look2(): Uint8Array {
 
 /** A tile's name as Look says it: "a barrel", the frame number dropped. */
 function described(name: string): string {
-  const n = name.replace(/ \d+$/, '').replace(/ [nsew]$|\b(n-s|e-w)\b/g, '').trim();
+  const n = name
+    .replace(/ \d+$/, '')
+    .replace(/ [nsew]$|\b(n-s|e-w)\b/g, '')
+    .trim();
   if (!n) return 'nothing of note';
-  if (/^(deep |shallow )?water|grass|scrub|brush|swamp|desert|hills|mountains|forest|cobbles|lava|flowers|crops|dirt|path/.test(n)) return n;
+  if (/^(deep |shallow )?water|grass|scrub|brush|swamp|desert|hills|mountains|forest|cobbles|lava|flowers|crops|dirt|path/.test(n))
+    return n;
   return /^[aeiou]/.test(n) ? `an ${n}` : `a ${n}`;
 }
-

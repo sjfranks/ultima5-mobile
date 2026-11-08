@@ -159,6 +159,16 @@ function tiles(o: OvlBuilder): void {
   const overview = new Uint8Array(0x100);
   for (let t = 0; t < 0x100; t++) overview[t] = t < 4 ? 0 : t >= 0x0a && t <= 0x0d ? 3 : t < 0x20 ? 5 : 3;
   o.bytes(0x1d1a, overview, 'overview');
+  // D_367e: where the townsfolk may walk (npc.ts npcCanStand): where the party may, through doors, and not out onto
+  // the world's places or ships.
+  const walk = new Uint8Array(bits);
+  for (const [a, b] of [
+    [0x10, 0x1c],
+    [0x27, 0x3f],
+  ])
+    for (let t = a; t <= b; t++) walk[t >> 3] |= 0x80 >> (t & 7);
+  for (const t of [0xb8, 0xba]) walk[t >> 3] &= ~(0x80 >> (t & 7));
+  o.bytes(0x367e, walk, 'townsfolk walk');
 }
 
 // --- Things ------------------------------------------------------------------------------------
@@ -250,18 +260,38 @@ const ITEMS = [
 ];
 
 function things(o: OvlBuilder): void {
-  o.table(0x17f6, ARMS.map((a) => a[0]), 'arm names');
+  o.table(
+    0x17f6,
+    ARMS.map((a) => a[0]),
+    'arm names',
+  );
   // D_1962: the short names (eleven letters, padded), and eight more for the spells' and monsters' blows.
   o.table(0x1962, [...ARMS.map((a) => a[1].padEnd(10)), ...Array<string>(8).fill('Blow'.padEnd(10))], 'short arm names');
-  o.bytes(0x1a7e, ARMS.map((a) => a[2]), 'arm kinds');
-  o.bytes(0x1aae, ARMS.map((a) => a[3]), 'arm weights');
-  o.bytes(0x1634, ARMS.map((a) => a[4]), 'arm defence');
+  o.bytes(
+    0x1a7e,
+    ARMS.map((a) => a[2]),
+    'arm kinds',
+  );
+  o.bytes(
+    0x1aae,
+    ARMS.map((a) => a[3]),
+    'arm weights',
+  );
+  o.bytes(
+    0x1634,
+    ARMS.map((a) => a[4]),
+    'arm defence',
+  );
   // D_15fc, D_1664, D_169c: damage, range and how it strikes, for the forty-eight and eight blows more.
   o.bytes(0x15fc, [...ARMS.map((a) => a[5]), 8, 8, 8, 8, 8, 8, 8, 8], 'arm damage');
   o.bytes(0x1664, [...ARMS.map((a) => a[6]), 0, 0, 0, 0, 0, 0, 0, 0], 'arm range');
   o.bytes(0x169c, [...ARMS.map((a) => a[7]), 0, 0, 0, 0, 0, 0, 0, 0], 'arm strike');
   // D_1ae8: the little picture by each in the lists (a glyph of IBM.CH, font.ts).
-  o.bytes(0x1ae8, ARMS.map((a) => a[8]), 'arm marks');
+  o.bytes(
+    0x1ae8,
+    ARMS.map((a) => a[8]),
+    'arm marks',
+  );
   o.table(0x1916, ITEMS, 'item names');
   // D_1ade: the figure each class is drawn as in a fight (the Avatar's the walking hero).
   o.bytes(0x1ade, [0x4c, 0x40, 0x44, 0x48, 0x4c, 0x4c, 0x4c, 0x4c, 0x4c], 'class figures');
@@ -341,13 +371,41 @@ const CREATURES: Creature[] = [
 ];
 
 function creatures(o: OvlBuilder): void {
-  o.table(0x1856, CREATURES.map((c) => c[0]), 'creature names');
-  o.table(0x18b6, CREATURES.map((c) => c[1]), 'fight names');
-  o.bytes(0x13bc, CREATURES.flatMap((c) => c.slice(2, 10) as number[]), 'creature stats');
-  o.words(0x153c, CREATURES.map((c) => c[10]), 'creature flags');
-  o.bytes(0x159c, CREATURES.map((c) => c[11]), 'creature reach');
-  o.bytes(0x15cc, CREATURES.map((c) => c[12]), 'creature missiles');
-  o.bytes(0x16d4, CREATURES.map((c) => c[13]), 'creature kin');
+  o.table(
+    0x1856,
+    CREATURES.map((c) => c[0]),
+    'creature names',
+  );
+  o.table(
+    0x18b6,
+    CREATURES.map((c) => c[1]),
+    'fight names',
+  );
+  o.bytes(
+    0x13bc,
+    CREATURES.flatMap((c) => c.slice(2, 10) as number[]),
+    'creature stats',
+  );
+  o.words(
+    0x153c,
+    CREATURES.map((c) => c[10]),
+    'creature flags',
+  );
+  o.bytes(
+    0x159c,
+    CREATURES.map((c) => c[11]),
+    'creature reach',
+  );
+  o.bytes(
+    0x15cc,
+    CREATURES.map((c) => c[12]),
+    'creature missiles',
+  );
+  o.bytes(
+    0x16d4,
+    CREATURES.map((c) => c[13]),
+    'creature kin',
+  );
   // D_2bc0, D_2bdc: what comes out of the island's grass and woods by day, and how likely each is (out of 256).
   o.bytes(0x2bc0, [0x90, 0x94, 0x98, 0xa0, 0xc0, 0xc8, 0xbc, 0xc4, 0xc0, 0xe4, 0x90, 0x94], 'land creatures');
   o.bytes(0x2bdc, [50, 40, 30, 30, 30, 20, 20, 12, 10, 4, 2, 2], 'land odds');
@@ -413,11 +471,41 @@ function shops(o: OvlBuilder): void {
 // --- The rest ------------------------------------------------------------------------------------------
 
 function misc(o: OvlBuilder): void {
+  // The 1988 game's virtues, mantras, shrines, Shadowlords and words of power: Test has none of them.
+  o.table(0x1f4e, Array<string>(8).fill(''), 'virtues');
+  o.table(0x1f5e, Array<string>(8).fill(''), 'mantras');
+  o.bytes(0x1f6e, new Uint8Array(8), 'shrine x');
+  o.bytes(0x1f76, new Uint8Array(8), 'shrine y');
+  o.table(0x444a, ['', '', ''], 'shadowlords');
+  o.table(0x4502, Array<string>(8).fill(''), 'words of power');
+  // The directions said as the party walks the world (outdoors.ts).
+  o.text(0x29db, 'North\n');
+  o.text(0x29e2, 'South\n');
+  o.text(0x29e9, 'East\n');
+  o.text(0x29ef, 'West\n');
+  // What a wishing well may be asked for (words.ts WISHES), and a password nobody asks.
+  for (const [at, word] of [
+    [0x7242, 'GOLD'],
+    [0x724c, 'FOOD'],
+    [0x7254, 'HEALTH'],
+    [0x7260, 'LUCK'],
+    [0x7266, 'LOVE'],
+    [0x726e, 'PEACE'],
+  ] as const)
+    o.text(at, word);
+  o.text(0x4a9a, 'SALT');
   o.table(0x515c, ['Test', 'Test', 'Test', 'Test'], 'title banners');
   o.bytes(0x50eb, new Uint8Array(0x5a).fill(6), 'proportional widths');
   // D_6a36, D_6a48: the tune a lute player in a tavern plays (frame.ts): nine notes' pitches and the tune.
   o.words(0x6a36, [262, 294, 330, 349, 392, 440, 494, 523, 587], 'lute notes');
-  o.bytes(0x6a48, [1, 3, 5, 3, 1, 0, 5, 6, 5, 3, 0, 0, 1, 3, 5, 8, 5, 3, 1, 0, 0, 0, 6, 5, 3, 5, 6, 8, 6, 5, 0, 0, 3, 2, 1, 2, 3, 5, 3, 2, 1, 0, 0, 0, 5, 5, 6, 5, 3, 1, 0, 0, 0], 'lute tune');
+  o.bytes(
+    0x6a48,
+    [
+      1, 3, 5, 3, 1, 0, 5, 6, 5, 3, 0, 0, 1, 3, 5, 8, 5, 3, 1, 0, 0, 0, 6, 5, 3, 5, 6, 8, 6, 5, 0, 0, 3, 2, 1, 2, 3, 5, 3, 2, 1, 0, 0, 0, 5,
+      5, 6, 5, 3, 1, 0, 0, 0,
+    ],
+    'lute tune',
+  );
   // D_2746, D_275a: the harpsichord's ten notes and the tune that opens what it guards (harpsichord.ts).
   o.words(0x2746, [262, 294, 330, 349, 392, 440, 494, 523, 587, 659], 'harpsichord notes');
   o.bytes(0x275a, [1, 3, 5, 8, 5, 3, 1, 2, 4, 6, 9, 6, 4], 'harpsichord tune');

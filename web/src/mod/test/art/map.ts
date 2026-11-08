@@ -90,7 +90,12 @@ const TREE = [
 const TREE_KEY = { G: C.lgreen, g: C.green, n: C.brown };
 const lightWood: Art = (p) => {
   grass(p);
-  p.draw(TREE.map((r) => r.slice(2, 12)), { ...TREE_KEY, g: C.dark }, 3, 3);
+  p.draw(
+    TREE.map((r) => r.slice(2, 12)),
+    { ...TREE_KEY, g: C.dark },
+    3,
+    3,
+  );
 };
 const forest: Art = (p) => {
   p.fill(C.black);
@@ -131,7 +136,12 @@ const mountains: Art = (p) => {
 };
 const peak: Art = (p) => {
   p.fill(C.dark);
-  p.draw(MOUNTAIN.map((r) => r.replace(/w/g, 'W').replace(/^(\s*)W/, '$1W')), { W: C.white, w: C.grey, d: C.grey }, 0, 5);
+  p.draw(
+    MOUNTAIN.map((r) => r.replace(/w/g, 'W').replace(/^(\s*)W/, '$1W')),
+    { W: C.white, w: C.grey, d: C.grey },
+    0,
+    5,
+  );
   p.draw(MOUNTAIN, { W: C.white, w: C.white, d: C.grey }, 3, 0);
 };
 
@@ -173,15 +183,17 @@ const pier: Art = (p) => {
   planks(p);
   p.rect(0, 0, 1, 16, C.blue).rect(15, 0, 1, 16, C.blue);
 };
-const brick = (base: number, mortar: number, light: number): Art => (p) => {
-  p.fill(base);
-  for (let y = 0; y < 16; y += 4) {
-    for (let x = 0; x < 16; x++) p.set(x, y + 3, mortar);
-    const off = (y / 4) % 2 ? 4 : 0;
-    for (let x = off; x < 16; x += 8) for (let k = 0; k < 3; k++) p.set(x, y + k, mortar);
-  }
-  p.specks(10, light);
-};
+const brick =
+  (base: number, mortar: number, light: number): Art =>
+  (p) => {
+    p.fill(base);
+    for (let y = 0; y < 16; y += 4) {
+      for (let x = 0; x < 16; x++) p.set(x, y + 3, mortar);
+      const off = (y / 4) % 2 ? 4 : 0;
+      for (let x = off; x < 16; x += 8) for (let k = 0; k < 3; k++) p.set(x, y + k, mortar);
+    }
+    p.specks(10, light);
+  };
 const stoneWall = brick(C.grey, C.dark, C.white);
 const wall = brick(C.dark, C.black, C.grey);
 const rock: Art = (p) => {
@@ -279,14 +291,32 @@ const plant = on(
 );
 const bedHead = on(
   woodFloor,
-  ['nnnnnnnnnnnnnnnn', 'nWWWWWWWWWWWWWWn', 'nWWWWWWWWWWWWWWn', 'nwwwwwwwwwwwwwwn', 'nRRRRRRRRRRRRRRn', 'nRrRRRRRRRRRRrRn', 'nRRRRRRRRRRRRRRn', 'nRRRRRRRRRRRRRRn'],
+  [
+    'nnnnnnnnnnnnnnnn',
+    'nWWWWWWWWWWWWWWn',
+    'nWWWWWWWWWWWWWWn',
+    'nwwwwwwwwwwwwwwn',
+    'nRRRRRRRRRRRRRRn',
+    'nRrRRRRRRRRRRrRn',
+    'nRRRRRRRRRRRRRRn',
+    'nRRRRRRRRRRRRRRn',
+  ],
   { n: C.brown, W: C.white, w: C.grey, R: C.lred, r: C.red },
   0,
   6,
 );
 const bedFoot = on(
   woodFloor,
-  ['nRRRRRRRRRRRRRRn', 'nRRRRRRrRRRRRRRn', 'nRRRRRRRRRRRRRRn', 'nRrRRRRRRRRRRrRn', 'nRRRRRRRRRRRRRRn', 'nrrrrrrrrrrrrrrn', 'nnnnnnnnnnnnnnnn', 'd              d'],
+  [
+    'nRRRRRRRRRRRRRRn',
+    'nRRRRRRrRRRRRRRn',
+    'nRRRRRRRRRRRRRRn',
+    'nRrRRRRRRRRRRrRn',
+    'nRRRRRRRRRRRRRRn',
+    'nrrrrrrrrrrrrrrn',
+    'nnnnnnnnnnnnnnnn',
+    'd              d',
+  ],
   { n: C.brown, R: C.lred, r: C.red, d: C.dark },
   0,
   0,
@@ -310,7 +340,15 @@ const fountain =
   (p) => {
     cobbles(p);
     p.draw(
-      [' wwwwwwwwwwwwww ', 'wwBBBBBBBBBBBBww', 'wBBBCBBBBBBCBBBw', 'wBBBBBBBBBBBBBBw', 'wBBCBBBBBBBBCBBw', 'wwBBBBBBBBBBBBww', ' wwwwwwwwwwwwww '],
+      [
+        ' wwwwwwwwwwwwww ',
+        'wwBBBBBBBBBBBBww',
+        'wBBBCBBBBBBCBBBw',
+        'wBBBBBBBBBBBBBBw',
+        'wBBCBBBBBBBBCBBw',
+        'wwBBBBBBBBBBBBww',
+        ' wwwwwwwwwwwwww ',
+      ],
       { w: C.grey, B: C.lblue, C: C.lcyan },
       0,
       8,
@@ -326,25 +364,44 @@ const fountain =
   };
 const well = on(
   grass,
-  ['  nnnnnnnnnnnn  ', ' n            n ', '  n          n  ', '  n          n  ', '  n          n  ', ' wwwwwwwwwwwwww ', 'wwkkkkkkkkkkkkww', 'wkkkkbbbbkkkkkkw', 'wkkkkkkkkkkkkkkw', 'wwkkkkkkkkkkkkww', ' wwwwwwwwwwwwww '],
+  [
+    '  nnnnnnnnnnnn  ',
+    ' n            n ',
+    '  n          n  ',
+    '  n          n  ',
+    '  n          n  ',
+    ' wwwwwwwwwwwwww ',
+    'wwkkkkkkkkkkkkww',
+    'wkkkkbbbbkkkkkkw',
+    'wkkkkkkkkkkkkkkw',
+    'wwkkkkkkkkkkkkww',
+    ' wwwwwwwwwwwwww ',
+  ],
   { n: C.brown, w: C.grey, k: C.black, b: C.blue },
   0,
   3,
 );
 const lamp: Art = (p) => {
   grass(p);
-  p.draw(['  dyyd  ', ' dyWWyd ', ' dyWWyd ', '  dddd  ', '   dd   ', '   dd   ', '   dd   ', '   dd   ', '   dd   ', '  dddd  ', ' dddddd '], { d: C.dark, y: C.yellow, W: C.white }, 4, 2);
+  p.draw(
+    ['  dyyd  ', ' dyWWyd ', ' dyWWyd ', '  dddd  ', '   dd   ', '   dd   ', '   dd   ', '   dd   ', '   dd   ', '  dddd  ', ' dddddd '],
+    { d: C.dark, y: C.yellow, W: C.white },
+    4,
+    2,
+  );
 };
-const fence = (across: boolean): Art => (p) => {
-  grass(p);
-  if (across) {
-    p.rect(0, 6, 16, 2, C.brown).rect(0, 11, 16, 2, C.brown).rect(2, 4, 2, 11, C.brown).rect(12, 4, 2, 11, C.brown);
-    p.rect(0, 7, 16, 1, C.dark).rect(0, 12, 16, 1, C.dark);
-  } else {
-    p.rect(6, 0, 2, 16, C.brown).rect(11, 0, 2, 16, C.brown).rect(4, 2, 11, 2, C.brown).rect(4, 12, 11, 2, C.brown);
-    p.rect(7, 0, 1, 16, C.dark).rect(12, 0, 1, 16, C.dark);
-  }
-};
+const fence =
+  (across: boolean): Art =>
+  (p) => {
+    grass(p);
+    if (across) {
+      p.rect(0, 6, 16, 2, C.brown).rect(0, 11, 16, 2, C.brown).rect(2, 4, 2, 11, C.brown).rect(12, 4, 2, 11, C.brown);
+      p.rect(0, 7, 16, 1, C.dark).rect(0, 12, 16, 1, C.dark);
+    } else {
+      p.rect(6, 0, 2, 16, C.brown).rect(11, 0, 2, 16, C.brown).rect(4, 2, 11, 2, C.brown).rect(4, 12, 11, 2, C.brown);
+      p.rect(7, 0, 1, 16, C.dark).rect(12, 0, 1, 16, C.dark);
+    }
+  };
 const sign =
   (picture: string[], key: Record<string, number>): Art =>
   (p) => {
@@ -367,22 +424,26 @@ const tavernSign = sign(['  WWWW  ', ' WWWWWW ', ' nnnnnnd', ' nyyyynd', ' nyyyy
 
 // --- The ruins and the cave ---------------------------------------------------------------------------
 
-const rubble = (ground: Art): Art => (p) => {
-  ground(p);
-  for (let i = 0; i < 7; i++) {
-    const x = p.rnd(12) + 1;
-    const y = p.rnd(12) + 2;
-    p.draw([' ww ', 'wwwd', 'wwdd', ' dd '], { w: C.grey, d: C.dark }, x, y);
-  }
-};
-const ladder = (down: boolean): Art => (p) => {
-  if (down) {
-    earth(p);
-    p.rect(2, 2, 12, 12, C.black);
-  } else ruinFloor(p);
-  p.rect(4, 0, 1, 16, C.brown).rect(11, 0, 1, 16, C.brown);
-  for (let y = 1; y < 16; y += 3) p.rect(4, y, 8, 1, C.yellow);
-};
+const rubble =
+  (ground: Art): Art =>
+  (p) => {
+    ground(p);
+    for (let i = 0; i < 7; i++) {
+      const x = p.rnd(12) + 1;
+      const y = p.rnd(12) + 2;
+      p.draw([' ww ', 'wwwd', 'wwdd', ' dd '], { w: C.grey, d: C.dark }, x, y);
+    }
+  };
+const ladder =
+  (down: boolean): Art =>
+  (p) => {
+    if (down) {
+      earth(p);
+      p.rect(2, 2, 12, 12, C.black);
+    } else ruinFloor(p);
+    p.rect(4, 0, 1, 16, C.brown).rect(11, 0, 1, 16, C.brown);
+    for (let y = 1; y < 16; y += 3) p.rect(4, y, 8, 1, C.yellow);
+  };
 const bones = on(
   earth,
   [' W       W ', 'WWWWWWWWWWW', ' W       W ', '           ', '    WWW    ', '   WkWkW   ', '   WWWWW   ', '    W W    '],
@@ -396,37 +457,82 @@ const blood = (p: Pixels): void => {
 };
 const torch: Art = (p) => {
   earth(p);
-  p.draw(['   y   ', '  yRy  ', '  RyR  ', ' yRWRy ', '  RRR  ', '  ddd  ', '   n   ', '   n   ', '   n   ', '   n   ', '  ddd  '], {
-    y: C.yellow,
-    R: C.lred,
-    W: C.white,
-    d: C.dark,
-    n: C.brown,
-  }, 4, 2);
+  p.draw(
+    ['   y   ', '  yRy  ', '  RyR  ', ' yRWRy ', '  RRR  ', '  ddd  ', '   n   ', '   n   ', '   n   ', '   n   ', '  ddd  '],
+    {
+      y: C.yellow,
+      R: C.lred,
+      W: C.white,
+      d: C.dark,
+      n: C.brown,
+    },
+    4,
+    2,
+  );
 };
 const brazier: Art = (p) => {
   earth(p);
-  p.draw(['  y  y  y  ', ' yRy yRyRy ', ' RyRyRyRyR ', 'RRRRrRRRrRR', 'dwwwwwwwwwd', ' dwwwwwwwd ', '   dwwwd   ', '    ddd    ', '   d   d   ', '  d     d  '], {
-    y: C.yellow,
-    R: C.lred,
-    r: C.red,
-    w: C.grey,
-    d: C.dark,
-  }, 2, 3);
+  p.draw(
+    [
+      '  y  y  y  ',
+      ' yRy yRyRy ',
+      ' RyRyRyRyR ',
+      'RRRRrRRRrRR',
+      'dwwwwwwwwwd',
+      ' dwwwwwwwd ',
+      '   dwwwd   ',
+      '    ddd    ',
+      '   d   d   ',
+      '  d     d  ',
+    ],
+    {
+      y: C.yellow,
+      R: C.lred,
+      r: C.red,
+      w: C.grey,
+      d: C.dark,
+    },
+    2,
+    3,
+  );
 };
 
 // --- Overworld places ----------------------------------------------------------------------------------
 
 const town = on(
   grass,
-  [' w   w   w   w  ', 'wwwwwwwwwwwwwwww', 'w RR   RRR   RRw', 'wRRRR RRRRR RRRw', 'w nn   nnn   nnw', 'w nk   nkn   nkw', 'w    RRR       w', 'w   RRRRR      w', 'w   nnnnn  RR  w', 'w   nnkkn RRRR w', 'w          nn  w', 'wwwwwwkkwwwwwwww'],
+  [
+    ' w   w   w   w  ',
+    'wwwwwwwwwwwwwwww',
+    'w RR   RRR   RRw',
+    'wRRRR RRRRR RRRw',
+    'w nn   nnn   nnw',
+    'w nk   nkn   nkw',
+    'w    RRR       w',
+    'w   RRRRR      w',
+    'w   nnnnn  RR  w',
+    'w   nnkkn RRRR w',
+    'w          nn  w',
+    'wwwwwwkkwwwwwwww',
+  ],
   { w: C.grey, R: C.lred, n: C.brown, k: C.black },
   0,
   2,
 );
 const ruins = on(
   grass,
-  ['  w       w     ', ' ww  w   www    ', ' wd  ww  wdw  w ', ' wd  wd  wdw  ww', ' wdwwwd  wdwwwdw', ' wd           dw', ' wd   dd       w', ' ww  wwww   www ', '     wddw       ', '  dd      d   d '],
+  [
+    '  w       w     ',
+    ' ww  w   www    ',
+    ' wd  ww  wdw  w ',
+    ' wd  wd  wdw  ww',
+    ' wdwwwd  wdwwwdw',
+    ' wd           dw',
+    ' wd   dd       w',
+    ' ww  wwww   www ',
+    '     wddw       ',
+    '  dd      d   d ',
+  ],
   { w: C.grey, d: C.dark },
   0,
   4,
@@ -436,11 +542,29 @@ const ruins = on(
 
 const burst: Art = (p) => {
   p.fill(C.black);
-  p.draw(['   y    y   ', '    y  y    ', ' y  yRRy  y ', '  y RyyR y  ', '   RyWWyR   ', 'yyRyWWWWyRyy', 'yyRyWWWWyRyy', '   RyWWyR   ', '  y RyyR y  ', ' y  yRRy  y ', '    y  y    ', '   y    y   '], {
-    y: C.yellow,
-    R: C.lred,
-    W: C.white,
-  }, 2, 2);
+  p.draw(
+    [
+      '   y    y   ',
+      '    y  y    ',
+      ' y  yRRy  y ',
+      '  y RyyR y  ',
+      '   RyWWyR   ',
+      'yyRyWWWWyRyy',
+      'yyRyWWWWyRyy',
+      '   RyWWyR   ',
+      '  y RyyR y  ',
+      ' y  yRRy  y ',
+      '    y  y    ',
+      '   y    y   ',
+    ],
+    {
+      y: C.yellow,
+      R: C.lred,
+      W: C.white,
+    },
+    2,
+    2,
+  );
 };
 const fireField: Art = (p) => {
   p.fill(C.red).specks(40, C.lred).specks(25, C.yellow).specks(6, C.white);
@@ -448,10 +572,12 @@ const fireField: Art = (p) => {
 const lava: Art = (p) => {
   p.fill(C.red).strokes(10, 3, C.lred).specks(12, C.yellow);
 };
-const plain = (c: number, d: number): Art => (p) => {
-  p.fill(c);
-  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if ((x + y) % 4 === 0) p.set(x, y, d);
-};
+const plain =
+  (c: number, d: number): Art =>
+  (p) => {
+    p.fill(c);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if ((x + y) % 4 === 0) p.set(x, y, d);
+  };
 
 const ART: Record<number, Art> = {
   0x00: burst,

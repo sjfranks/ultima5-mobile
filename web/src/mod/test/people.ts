@@ -107,7 +107,10 @@ export const CONVERSATIONS: [number, Conversation][] = [
         [['stick', 'sword'], 'Brann said he would make me a real sword when I am taller. I am taller now. Mostly.'],
         [['troll', 'trolls'], 'Old Noll says there is a troll under the hill as big as a house! He might have been making it up.'],
         [['noll', 'fish'], 'He sits in the SALTY GULL all day telling stories. Mum says not to listen.'],
-        [['salty', 'gull', 'tavern'], 'Mira runs it. She makes fish pie. It is the best pie in the world. It is the only pie in the world.'],
+        [
+          ['salty', 'gull', 'tavern'],
+          'Mira runs it. She makes fish pie. It is the best pie in the world. It is the only pie in the world.',
+        ],
       ],
     },
   ],

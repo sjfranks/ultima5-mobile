@@ -21,7 +21,16 @@ export function initGam(): Uint8Array {
   hero.equips.set([NONE, 9, 18, NONE, NONE, NONE]); // a tunic, a cudgel
   const lyra = s.members[1];
   Object.assign(lyra, { name: LYRA.name, gender: LYRA.gender, cls: LYRA.cls.charCodeAt(0), status: Status.Good });
-  Object.assign(lyra, { str: LYRA.str, dex: LYRA.dex, int: LYRA.int, mp: 0, hp: LYRA.hp, maxHp: LYRA.hp, exp: LYRA.exp, level: LYRA.level });
+  Object.assign(lyra, {
+    str: LYRA.str,
+    dex: LYRA.dex,
+    int: LYRA.int,
+    mp: 0,
+    hp: LYRA.hp,
+    maxHp: LYRA.hp,
+    exp: LYRA.exp,
+    level: LYRA.level,
+  });
   lyra.equips.set([NONE, 10, 17, NONE, NONE, NONE]); // a jerkin, a sling
   lyra.mapId = TOWN_ID;
   for (let i = 2; i < 16; i++) s.members[i].equips.fill(NONE);

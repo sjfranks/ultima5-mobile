@@ -66,6 +66,17 @@ export interface HarpView {
 }
 
 /**
+ * Where the harpsichord's nine keys lie in its box (EGA pixels): the first key's left and top, each key's width and
+ * height - as wide as the box lets them, from ten pixels in its own small box to eighteen in the wide one it has when
+ * played by touch (harpsichord.ts), and near three times as tall. The screen draws them by it (screen.ts drawHarp), and
+ * a finger finds them by it (ui/directTouch.ts).
+ */
+export function harpKeys(v: Pick<HarpView, 'x' | 'y' | 'w'>): { x: number; y: number; w: number; h: number } {
+  const w = Math.max(10, Math.min(18, Math.floor((v.w - 6) / 9)));
+  return { x: v.x + Math.floor((v.w - w * 9) / 2), y: v.y + 14, w, h: Math.round(w * 2.8) };
+}
+
+/**
  * Not a key: the window lost focus, or the page was hidden (another app in front, the Android app sent to the
  * background), while the game waited for a command. The command prompt opens the Pause menu for it (the ultima3
  * port's), so the player comes back to the game held rather than to play already going on; every other prompt lets it

@@ -211,6 +211,9 @@ export class TouchBar {
         return { primary: ok, middle: [up, down], back };
       case 'way':
         return g.askingWay === 'here' ? { primary: { label: 'Here', code: K.Enter, main: true }, middle: [], back } : { middle: [], back };
+      case 'harp':
+        // Its keys are played where they are; the bar only gets up from it.
+        return { middle: [], back: { label: 'Leave', code: Pad.B } };
       case 'wait':
         return { primary: { label: 'Go on', code: Pad.A, main: true }, middle: [], back };
     }

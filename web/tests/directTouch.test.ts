@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { arrowToward, firstStep, touchMode, wayTo } from '../src/ui/directTouch.ts';
-import { atOf, K, pickOf, touchAt, touchPick } from '../src/game/io.ts';
+import { atOf, harpKeys, K, pickOf, touchAt, touchPick } from '../src/game/io.ts';
 import type { Game } from '../src/game/game.ts';
 
 /** The view's squares as a picture: '#' the party cannot stand on, anything else it can. */
@@ -180,9 +180,24 @@ describe('direct touch', () => {
     expect(touchMode(g, waiting)).toBe('list');
     Object.assign(g, { menuShown: null, askingWay: 'way' });
     expect(touchMode(g, waiting)).toBe('way');
+    Object.assign(g, { askingWay: '', harpView: { x: 8, y: 96, w: 168, h: 72 } });
+    expect(touchMode(g, waiting)).toBe('harp');
+    expect(touchMode(g, { waiting: false })).toBe('busy');
+    Object.assign(g, { harpView: null });
     Object.assign(g, { titleRows: [] });
     expect(touchMode(g, { waiting: false })).toBe('title');
     Object.assign(g, { touchAnswers: true });
     expect(touchMode(g, { waiting: false })).toBe('answers');
+  });
+
+  it("lays the harpsichord's keys out as wide as its box lets them: a finger's breadth in the wide one played by touch", () => {
+    // Its own small box (twelve letters across): ten pixels a key, as the port has it.
+    expect(harpKeys({ x: 40, y: 80, w: 96 })).toEqual({ x: 43, y: 94, w: 10, h: 28 });
+    // The wide one (twenty-one across): eighteen a key, near three times as tall, all nine within the box.
+    const k = harpKeys({ x: 8, y: 96, w: 168 });
+    expect(k.w).toBe(18);
+    expect(k.h).toBe(50);
+    expect(k.x).toBeGreaterThanOrEqual(8);
+    expect(k.x + 9 * k.w).toBeLessThanOrEqual(8 + 168);
   });
 });

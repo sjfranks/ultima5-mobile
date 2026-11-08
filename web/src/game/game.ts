@@ -385,6 +385,8 @@ export class Game {
    * Where the last press came from (the page says). Only a player pressing real keys is offered the switch to
    * letter commands: chosen with a thumb or a gamepad, it would leave them with buttons the letters ignore.
    */
+  /** The harpsichord's keyboard while it is up (harpsichord.ts), for a finger to find its keys (ui/directTouch.ts). */
+  harpView: import('./io.ts').HarpView | null = null;
   lastSource: 'keyboard' | 'gamepad' | 'touch' = 'keyboard';
 
   constructor(

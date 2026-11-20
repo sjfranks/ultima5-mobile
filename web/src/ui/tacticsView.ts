@@ -17,7 +17,7 @@
 
 import { arenaFree, blowOdds, combatantAt, hitNeed, inArena, onMonsterSide, snapTargets, targetsFrom, weaponFor } from '../game/combat.ts';
 import { CF, type Game } from '../game/game.ts';
-import { hitChance, type Die } from '../game/tactics.ts';
+import { hitChance, walkCost, walkReach, type Die } from '../game/tactics.ts';
 import { drawDie, FOE, FRIEND, GOLD, newThrow, solid, throwAt, type Throw } from './dice3d.ts';
 import { HI, TILE_X, TILE_Y } from './framebuffer.ts';
 import type { Screen } from './screen.ts';
@@ -28,6 +28,7 @@ const SQ = 16 * E;
 
 const FILL = {
   move: 'rgba(80, 140, 255, 0.38)',
+  further: 'rgba(80, 140, 255, 0.18)',
   target: 'rgba(208, 64, 47, 0.5)',
   far: 'rgba(208, 64, 47, 0.25)',
 };
@@ -77,6 +78,11 @@ export class TacticsView {
     return targetsOf(this.g, i);
   }
 
+  /** The actions a walk of `d` squares costs member `i` now (game/tactics.ts walkCost). */
+  cost(i: number, d: number): number {
+    return walkCost(this.g, i, d);
+  }
+
   /** 1988's odds of member `i` striking foe `j` (from where they stand): the roll's chance, the blow, the kill. */
   odds(i: number, j: number): { hit: number; avg: number; kill: number; def: number } | null {
     const g = this.g;
@@ -115,9 +121,11 @@ export class TacticsView {
     const g = this.g;
     const c = g.combat[i];
     const reach = this.reach(i);
-    for (const k of reach.keys()) {
+    // the squares this move reaches washed blue; those a second move would, more lightly
+    const first = Math.max(1, ...[...reach.values()].filter((d) => walkCost(g, i, d) <= 1));
+    for (const [k, d] of reach) {
       const [x, y] = this.at(k & 15, k >> 4);
-      ctx.fillStyle = FILL.move;
+      ctx.fillStyle = d <= first ? FILL.move : FILL.further;
       ctx.fillRect(x, y, SQ, SQ);
     }
     // one pale line round the whole reach, on its outer edges only (the member's own square counted in)
@@ -151,6 +159,13 @@ export class TacticsView {
         ctx.fillStyle = '#fff2b0';
         ctx.fillRect(px, py, E, E);
       }
+    }
+    // a move under way: a pale dot for each square it may still walk, under the pips
+    for (let k = 0; k < g.tactics.steps; k++) {
+      ctx.fillStyle = '#1a1006';
+      ctx.fillRect(mx + (5 + k * 3) * E - E, my + 2 * E - E, 3 * E, 3 * E);
+      ctx.fillStyle = CHALK;
+      ctx.fillRect(mx + (5 + k * 3) * E, my + 2 * E, E, E);
     }
     // a foe marked by a tap: its odds, in the game's letters
     const way = this.screen.wayShown?.();
@@ -387,14 +402,17 @@ function faceUpOf(d: Throw, m: ReturnType<typeof throwAt>['m']): number {
   return s.values[at];
 }
 
-/** The squares member combatant `i` can walk to with the turn's actions left, a step each: square key (y * 16 + x) to steps. */
+/**
+ * The squares member combatant `i` can walk to with the move under way and the turn's actions left, each move as far as
+ * their dexterity takes them (game/tactics.ts stepsFor): square key (y * 16 + x) to the squares walked to get there.
+ */
 export function reachOf(g: Game, i: number): Map<number, number> {
   const c = g.combat[i];
   const tile = g.s.actors[c.actor].tile;
   const open = (x: number, y: number): boolean => inArena(x, y) && combatantAt(g, x, y) < 0 && arenaFree(g, tile, x, y);
   const out = new Map<number, number>();
   let edge = [[c.x, c.y]];
-  for (let step = 1; step <= g.tactics.left; step++) {
+  for (let step = 1; step <= walkReach(g, i); step++) {
     const next: number[][] = [];
     for (const [x, y] of edge)
       for (const [dx, dy] of [
@@ -444,13 +462,13 @@ export function pathOf(g: Game, i: number, x: number, y: number): { x: number; y
 /** The foes member combatant `i` reaches now (to null), and with two actions left, those it reaches after one step (to that step). */
 export function targetsOf(g: Game, i: number): Map<number, { x: number; y: number } | null> {
   const out = new Map<number, { x: number; y: number } | null>();
-  for (const j of snapTargets(g, i)) out.set(j, null);
-  if (g.tactics.left >= 2)
-    for (const [k, steps] of reachOf(g, i)) {
-      if (steps !== 1) continue;
-      const at = { x: k & 15, y: k >> 4 };
-      for (const j of targetsFrom(g, i, at.x, at.y)) if (!out.has(j)) out.set(j, at);
-    }
+  if (g.tactics.left >= 1) for (const j of snapTargets(g, i)) out.set(j, null);
+  // a walk, then a blow: an action must be left for the blow - the nearest square it is struck from
+  const spots = [...reachOf(g, i)].filter(([, d]) => walkCost(g, i, d) + 1 <= g.tactics.left).sort((a, b) => a[1] - b[1]);
+  for (const [k] of spots) {
+    const at = { x: k & 15, y: k >> 4 };
+    for (const j of targetsFrom(g, i, at.x, at.y)) if (!out.has(j)) out.set(j, at);
+  }
   return out;
 }
 

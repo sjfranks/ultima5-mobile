@@ -380,14 +380,20 @@ has the whole list; the highlights:
 ## Tactical turns
 
 Fights here are a board game: **each fighter's turn is two actions**,
-where 1988's was one. An action is what a turn was: a step, a blow, a
-spell, a use, a pass. Everything else is 1988's fight as the engine
+where 1988's was one. An action is what a turn was - a blow, a spell, a
+use, a pass - or a move of a few squares. Everything else is 1988's fight as the engine
 plays it - whose turn comes when (each fighter's dexterity timer), the
 roll to hit (the target's dexterity against the attacker's), the blow
 (1 to the weapon's damage, less 1 to the armour), the creatures' minds,
 poison, sleep, charm, fields, and what a square does to whoever ends a
 turn on it, once a turn. Gameplay, **Turns**, has 1988's one action back.
 
+- **A move goes as far as dexterity takes the fighter**: a move is one
+  action, and walks up to two squares for a dexterity under 10, three for
+  10 to 19 (an everyday one), four for 20 to 29 and five for 30 - for the
+  party and the creatures alike. A blow, a spell or a pass ends a move
+  under way; with no actions left, its squares may still be walked, and
+  anything else ends the turn.
 - **The dice** fall where the rules roll them, thrown onto the field
   beside whom they are for - blue for the party, red for the creatures:
   the roll to hit on a d30, the blow and the armour on the least die that
@@ -395,11 +401,12 @@ turn on it, once a turn. Gameplay, **Turns**, has 1988's one action back.
   number the rules rolled, and the log says it ("d30 18>=9", "d12 6 -d4
   1").
 - **On the field**, drawn as the game's own pixels: the squares the turn's
-  actions can walk to, washed blue, a pale line round them; the foes the
+  actions can walk to, washed blue (more lightly where a second move is
+  wanted), a pale line round them; the foes the
   weapon reaches, red with white corners, and those it reaches after a
-  step, fainter; a gold pip over the member for each action left. A tap
-  walks (two squares, both actions) or strikes; a foe a step off is walked
-  to and struck, marked first and done at a second tap, its odds shown
+  walk, fainter; a gold pip over the member for each action left, and a
+  pale dot under them for each square left of a move under way. A tap
+  walks or strikes; a foe within a walk is walked to and struck, marked first and done at a second tap, its odds shown
   over it - 1988's own, the roll's chance, the blow to expect and the
   chance it fells it.
 - **The hotbar** is the touch bar's, in a member's turn: Attack, Cast,

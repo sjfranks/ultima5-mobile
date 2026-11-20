@@ -50,7 +50,7 @@ import { putAside } from './speech.ts';
 import { devMode } from '../devMode.ts';
 import { ammoHeld, spendOne } from './ammo.ts';
 import { shortArmNames } from './armNames.ts';
-import { putBack, rolled, sidesFor, snapshot, throwDice } from './tactics.ts';
+import { putBack, rolled, sidesFor, snapshot, stepsFor, throwDice } from './tactics.ts';
 import { END_TURN, UNDO_ACTION } from './io.ts';
 
 /** Enemy flags (u5d macros.h ENEMY_FLAG_*). */
@@ -818,8 +818,8 @@ async function monsterAttacks(g: Game, i: number): Promise<boolean> {
   return true;
 }
 
-/** COMBAT_03f4: a monster's (or charmed member's) turn. */
-async function monsterTurn(g: Game): Promise<void> {
+/** COMBAT_03f4: a monster's (or charmed member's) turn; `moveOnly`, the rest of a tactical move (tactics.ts): a step, or nothing. */
+async function monsterTurn(g: Game, moveOnly = false): Promise<void> {
   const s = g.s;
   const c = g.combat[s.combatTurn];
   s.weapon = 0;
@@ -830,7 +830,9 @@ async function monsterTurn(g: Game): Promise<void> {
     return;
   }
   if (c.who === 0x2d) s.actors[c.actor].b6 = 0;
-  if (c.flags & CF.F2) {
+  if (moveOnly) {
+    // the rest of a move: no blow, no spell, no wound mended - a step toward its mark, or none
+  } else if (c.flags & CF.F2) {
     if ((c.flags & CF.Player) === 0 && g.random(0, 3) === 3) c.hp++;
     woundedState(g, s.combatTurn);
   } else {
@@ -838,6 +840,7 @@ async function monsterTurn(g: Game): Promise<void> {
     if (await monsterAttacks(g, s.combatTurn)) return;
   }
   if (monsterMove(g, s.combatTurn)) {
+    g.tactics.stepped = true;
     if (s.d58a2 & 0x10) {
       g.printChar('\n');
       await cue(g, 'Withdraw', () => g.sound.sweep(0x4b0, 2000, 1, 0x28));
@@ -847,7 +850,7 @@ async function monsterTurn(g: Game): Promise<void> {
       if ((c.flags & CF.Player) === 0 && c.who === 0x2f) passOut(g);
     }
     updateFrame(g);
-  } else if (c.flags & CF.F2) {
+  } else if (c.flags & CF.F2 && !moveOnly) {
     await monsterAttacks(g, s.combatTurn);
   }
 }
@@ -2915,6 +2918,13 @@ async function playerTurn(g: Game): Promise<boolean> {
           // a controller has E for Cast), Backspace takes back a step.
           if (t.on && key === 0x45 && g.options.input !== 'controller') key = END_TURN;
           if (t.on && key === K.Backspace) key = UNDO_ACTION;
+          // The turn's actions spent, a move under way: its squares may still be walked; anything else ends the turn.
+          const walking =
+            [K.Left, K.Right, K.Up, K.Down, K.Space, END_TURN, UNDO_ACTION, 0x5a].includes(key) || (key >= 0x30 && key <= 0x36);
+          if (t.on && t.turn === s.combatTurn && t.left === 0 && !walking) {
+            g.print('No actions left!\n');
+            key = END_TURN;
+          }
           g.cancelled = false;
           done = true;
           again = false;
@@ -3010,13 +3020,13 @@ async function playerTurn(g: Game): Promise<boolean> {
               break;
             case END_TURN: {
               // The turn's actions left, passed: asked first (tactics.ts).
-              if (!t.on) {
+              if (!t.on || t.turn !== s.combatTurn) {
                 done = false;
                 break;
               }
               const { confirm } = await import('./menu.ts');
               const name = s.members[who]?.name.trim() ?? '';
-              if (await confirm(g, `End this turn? ${name} still has ${t.left} action${t.left === 1 ? '' : 's'}.`)) {
+              if (t.left === 0 || (await confirm(g, `End this turn? ${name} still has ${t.left} action${t.left === 1 ? '' : 's'}.`))) {
                 t.endAsked = true;
                 g.say(0x6e60); // "Pass\n"
               } else done = false;
@@ -3050,6 +3060,7 @@ async function playerTurn(g: Game): Promise<boolean> {
             case K.Up:
             case K.Down:
               if (!(await movePlayer(g, s.combatTurn, key))) done = false;
+              else t.stepped = true;
               break;
             case 0x42:
               await misc(0x6e7e, 1);
@@ -3157,16 +3168,18 @@ async function takeTurn(g: Game): Promise<void> {
   }
   t.turn = i;
   t.left = t.max;
+  t.steps = 0;
   t.undo = null;
   t.endAsked = false;
   let acted = false;
   try {
-    while (t.left > 0) {
+    while (t.left > 0 || t.steps > 0) {
       const rolls = t.rolls;
-      const before = snapshot(g, t.left);
+      const before = snapshot(g, t.left, t.steps);
       const member = !onMonsterSide(g, i);
+      t.stepped = false;
       g.drawCombatMarks?.();
-      const spent = member ? await playerTurn(g) : (await monsterTurn(g), true);
+      const spent = member ? await playerTurn(g) : (await monsterTurn(g, t.left === 0), true);
       if (t.undoAsked) {
         t.undoAsked = false;
         const back = t.undo;
@@ -3174,6 +3187,7 @@ async function takeTurn(g: Game): Promise<void> {
         if (back) {
           putBack(g, back);
           t.left = back.left;
+          t.steps = back.steps;
           g.viewDirty = 1;
           updateFrame(g);
           drawVitals(g);
@@ -3182,10 +3196,21 @@ async function takeTurn(g: Game): Promise<void> {
       }
       if (!spent) continue;
       acted = true;
-      t.left--;
+      if (t.stepped) {
+        // A step: of the move under way, free; else a move begun - an action, and its squares to walk (stepsFor).
+        if (t.steps > 0) t.steps--;
+        else {
+          t.left--;
+          t.steps = stepsFor(g.combat[i].dex) - 1;
+        }
+      } else {
+        // A blow, a spell, a pass: an action, and the end of any move under way.
+        t.steps = 0;
+        if (t.left > 0) t.left--;
+      }
       // A member's action that rolled no dice - a step - can be taken back while the turn lasts: dice are final.
-      t.undo = member && t.rolls === rolls && t.left > 0 ? before : null;
-      if (t.endAsked || t.left === 0) break;
+      t.undo = member && t.rolls === rolls && (t.left > 0 || t.steps > 0) ? before : null;
+      if (t.endAsked || (t.left === 0 && t.steps === 0)) break;
       countSides(g);
       if (s.dx === 0 || s.dy === 0) break;
       const c = g.combat[i];
@@ -3196,6 +3221,7 @@ async function takeTurn(g: Game): Promise<void> {
   } finally {
     t.turn = -1;
     t.left = 0;
+    t.steps = 0;
     t.undo = null;
     g.drawCombatMarks?.();
   }

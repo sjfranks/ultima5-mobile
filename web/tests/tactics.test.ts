@@ -3,7 +3,7 @@ import { attackCombat, blowOdds, hitNeed, roll, seriesFight } from '../src/game/
 import { CF, type Game } from '../src/game/game.ts';
 import { K, UNDO_ACTION } from '../src/game/io.ts';
 import { journeyOnward } from '../src/game/run.ts';
-import { hitChance, SERIES, sidesFor, type Die } from '../src/game/tactics.ts';
+import { hitChance, SERIES, sidesFor, stepsFor, walkCost, type Die } from '../src/game/tactics.ts';
 import { enterTown, townLoop } from '../src/game/town.ts';
 import { fighter, keys, newGame } from './helpers.ts';
 
@@ -40,6 +40,15 @@ describe('tactical turns', () => {
     }
     expect(hitChance(0)).toBe(1);
     expect(hitChance(31)).toBe(0);
+  });
+
+  it('moves as far as dexterity takes a fighter: three squares an action for an everyday dexterity', () => {
+    expect([1, 9, 10, 15, 19, 20, 25, 29, 30].map(stepsFor)).toEqual([2, 2, 3, 3, 3, 4, 4, 4, 5]);
+    const g = { tactics: { steps: 0, left: 2 }, combat: [{ dex: 15 }] } as unknown as Game;
+    // three squares an action; the squares left of a move under way cost nothing
+    expect([1, 3, 4, 6, 7].map((d) => walkCost(g, 0, d))).toEqual([1, 1, 2, 2, 3]);
+    g.tactics.steps = 2;
+    expect([1, 2, 3, 5, 6].map((d) => walkCost(g, 0, d))).toEqual([0, 0, 1, 1, 2]);
   });
 
   it('throws each roll on the least die that holds its range', () => {
@@ -101,6 +110,7 @@ describe('tactical turns', () => {
     let at: [number, number] = [0, 0];
     let undone = false;
     let refused = false;
+    let movedOn = false;
     p.next = () => {
       const s = g.s;
       const t = g.tactics;
@@ -113,6 +123,8 @@ describe('tactical turns', () => {
         return K.Left;
       }
       if (member && phase === 1 && t.left === 1) {
+        // the step began a move: an action spent, and the rest of the move's squares to walk
+        movedOn = t.steps === stepsFor(me.dex) - 1;
         phase = 2;
         return UNDO_ACTION;
       }
@@ -132,6 +144,7 @@ describe('tactical turns', () => {
       return fight();
     };
     await attackCombat(g, 1);
+    expect(movedOn).toBe(true);
     expect(undone).toBe(true);
     if (phase >= 5) expect(refused).toBe(true);
   });

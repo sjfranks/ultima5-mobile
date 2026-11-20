@@ -102,6 +102,8 @@ describe('the sweeps', () => {
       const { g, p } = newGame(spell * 31 + 5);
       journeyOnward(g);
       g.options.input = 'letters';
+      // 1988's turns, one action each: every spell cast once, not a tactical fight (tactics.ts) played out.
+      g.options.tacticalTurns = false;
       mage(g);
       const s = g.s;
       Object.assign(s, { mapId: 0, level: 0, x: 86, y: 110 });

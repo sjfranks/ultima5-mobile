@@ -130,21 +130,23 @@ async function game(browser, url, touch = true) {
   after = await ready();
   check(after.x === s.x && after.y === s.y && after.left === 2, 'Undo takes the step back, both actions again');
 
-  // two squares: both actions, and the turn goes on to the next
-  const two = (await view(([i]) => [...window.u5tactics.reach(i)].map(([k, n]) => ({ x: k & 15, y: k >> 4, n })), s.i)).find(
-    (r) => r.n === 2,
+  // a whole move: as far as the member's dexterity takes them, for one action
+  const far = await view(([i]) => {
+    const v = window.u5tactics;
+    const dex = window.u5.g.combat[i].dex;
+    const one = [...v.reach(i)].filter(([, d]) => v.cost(i, d) === 1).sort((a, b) => b[1] - a[1])[0];
+    return one && { x: one[0] & 15, y: one[0] >> 4, d: one[1], dex };
+  }, s.i);
+  check(far && far.d >= 2, `a move walks ${far?.d} squares for dexterity ${far?.dex}`);
+  await tap(far.x, far.y);
+  await tap(far.x, far.y);
+  after = await ready();
+  check(
+    after && after.i === s.i && after.x === far.x && after.y === far.y && after.left === 1,
+    'the whole move is walked for one action, one left',
   );
-  await tap(two.x, two.y);
-  await tap(two.x, two.y);
-  for (let k = 0; k < 60; k++) {
-    const now = await view(([i]) => ({ x: window.u5.g.combat[i].x, y: window.u5.g.combat[i].y }), s.i);
-    if (now.x === two.x && now.y === two.y) break;
-    await p.waitForTimeout(100);
-  }
-  const walked = await view(([i]) => ({ x: window.u5.g.combat[i].x, y: window.u5.g.combat[i].y }), s.i);
-  check(walked.x === two.x && walked.y === two.y, 'a square two steps off is walked to with both actions');
 
-  // members come and go till one has a foe a step off; it is marked, its odds shown, then walked to and struck
+  // members come and go till one has a foe within a walk; it is marked, its odds shown, then walked to and struck
   let struck = false;
   let refused = false;
   let ended = false;
@@ -166,7 +168,10 @@ async function game(browser, url, touch = true) {
     if (!struck && far && s.left === 2) {
       await tap(far.x, far.y);
       const way = await view(() => window.u5.screen.wayShown?.() ?? null);
-      check(way && way.kind === 'foe' && way.steps.length === 1, 'a foe a step off is marked first, the step shown');
+      check(
+        way && way.kind === 'foe' && way.steps.length >= 1,
+        `a foe within a walk is marked first, its way shown (${way?.steps.length} squares)`,
+      );
       await shot('3-marked-foe');
       await tap(far.x, far.y);
       await p.waitForFunction(() => window.u5tactics.faces().length > 0 && window.u5tactics.faces().every((f) => f.landed), null, {

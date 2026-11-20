@@ -849,8 +849,9 @@ export class DirectTouch {
 
   /**
    * A tap in a tactical turn (game/tactics.ts), whose two actions a tap may spend both of: a foe in reach struck, as
-   * ever; a foe a step off, walked to and struck - two actions, so always marked first and done at a second tap on it;
-   * a square in the turn's reach walked to, a step an action. Fight taps: Confirm marks the rest first, as ever.
+   * ever; a foe within a walk, walked to and struck - a move and a blow, so always marked first and done at a second
+   * tap on it; a square in the turn's reach walked to, each move as far as the member's dexterity takes them. Fight
+   * taps: Confirm marks the rest first, as ever.
    */
   private tacticalTap(square: { x: number; y: number }, i: number): void {
     const g = this.g;
@@ -872,10 +873,11 @@ export class DirectTouch {
         g.bumpFoe = { x: square.x, y: square.y, pointed: true };
         return this.type(0x41);
       }
-      if (!marked) return mark({ frame: 'view', steps: [step], end: square, kind: 'foe' });
+      const walk = pathOf(g, i, step.x, step.y);
+      if (!marked) return mark({ frame: 'view', steps: walk, end: square, kind: 'foe' });
       this.armed = null;
       g.bumpFoe = { x: square.x, y: square.y, pointed: true };
-      return this.type(arrow(c, step), 0x41);
+      return this.type(...walk.map((p, k) => arrow(k === 0 ? c : walk[k - 1], p)), 0x41);
     }
     const path = pathOf(g, i, square.x, square.y);
     if (path.length) {

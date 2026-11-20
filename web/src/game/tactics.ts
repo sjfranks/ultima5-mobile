@@ -32,6 +32,15 @@ export interface Die {
   at: number;
 }
 
+/**
+ * How far a move goes, by dexterity: a move is one action, and walks up to this many squares - three for an everyday
+ * dexterity (10 to 19), two for a slow one, four for a quick one (20 to 29), five for the quickest (30: bats, wisps,
+ * insects, the Shadowlords).
+ */
+export function stepsFor(dex: number): number {
+  return dex >= 30 ? 5 : dex >= 20 ? 4 : dex >= 10 ? 3 : 2;
+}
+
 /** The dice there are, smallest first: a roll is thrown on the least that holds its range. */
 export const DICE = [4, 6, 8, 10, 12, 20, 30] as const;
 export const sidesFor = (n: number): number | null => DICE.find((d) => d >= n) ?? null;
@@ -42,6 +51,7 @@ interface Snap {
   combat: Uint8Array;
   map: Uint8Array;
   left: number;
+  steps: number;
 }
 
 /** A fight of the series: its arena (BRIT.CBT), the creatures (DATA.OVL's kinds) in the arena's own places. */
@@ -97,6 +107,9 @@ export class Tactics {
   turn = -1;
   left = 0;
   readonly max = 2;
+  /** The squares the move under way may still walk, its action spent already; and whether the last action was a step. */
+  steps = 0;
+  stepped = false;
   /** Rolled, not yet thrown; and the last throw (what the dice show). */
   dice: Die[] = [];
   thrown: Die[] = [];
@@ -126,8 +139,24 @@ export async function throwDice(g: Game): Promise<void> {
   await g.hooks.throwDice?.(dice);
 }
 
-export function snapshot(g: Game, left: number): Snap {
-  return { s: g.s.b.slice(), combat: g.combatBytes.slice(), map: g.combatMap.slice(), left };
+export function snapshot(g: Game, left: number, steps: number): Snap {
+  return { s: g.s.b.slice(), combat: g.combatBytes.slice(), map: g.combatMap.slice(), left, steps };
+}
+
+/**
+ * The actions a walk of `d` squares costs fighter `i` now: none for squares left of a move under way, then one for
+ * each move after - each as far as the fighter's dexterity takes it (stepsFor).
+ */
+export function walkCost(g: Game, i: number, d: number): number {
+  const t = g.tactics;
+  if (d <= t.steps) return 0;
+  return Math.ceil((d - t.steps) / stepsFor(g.combat[i].dex));
+}
+
+/** The farthest fighter `i` can walk with the turn's actions and the move under way. */
+export function walkReach(g: Game, i: number): number {
+  const t = g.tactics;
+  return t.steps + t.left * stepsFor(g.combat[i].dex);
 }
 
 export function putBack(g: Game, snap: Snap): void {

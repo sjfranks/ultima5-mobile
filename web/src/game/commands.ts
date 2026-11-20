@@ -9,7 +9,7 @@
 
 import { drawVitals } from './frame.ts';
 import { Game } from './game.ts';
-import { HARPSICHORD, K, SAVE_NOW } from './io.ts';
+import { HARPSICHORD, K, SAVE_NOW, TACTICAL_FIGHTS } from './io.ts';
 import { attackOutdoors, enterCommand } from './outdoors.ts';
 import { Status } from './save.ts';
 import { talkCommand } from './talk.ts';
@@ -133,6 +133,11 @@ async function command(g: Game, key: number): Promise<number> {
     }
     case SAVE_NOW: // the Pause menu's Save game
       return saveCommand(g, true);
+    case TACTICAL_FIGHTS: {
+      // The Pause menu's Tactical fights (tactics.ts).
+      const { tacticalFightsCommand } = await import('./tactics.ts');
+      return tacticalFightsCommand(g);
+    }
     case 0x52: // Ready
       return readyCommand(g);
     case 0x5a: // Z-stats

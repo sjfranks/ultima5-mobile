@@ -212,6 +212,8 @@ describe('bump to act, for things', () => {
 
   it('in a fight won, searches a corpse walked into, and searches then opens a chest', async () => {
     const { g, p } = newGame(2);
+    // 1988's turns, one action each: the seeded rolls this fight's course is set by (tactics.ts has two).
+    g.options.tacticalTurns = false;
     journeyOnward(g);
     await enterTown(g, true);
     p.keys.push(...keys(K.Down, K.Down, K.Down, 'O', K.Down), ...Array<number>(14).fill(K.Down), 'Y'.charCodeAt(0));

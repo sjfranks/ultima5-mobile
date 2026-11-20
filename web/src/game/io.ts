@@ -46,6 +46,14 @@ export const Pad = { A: 0x100, B: 0x101, X: 0x102, Y: 0x103, Start: 0x104, Selec
 /** The Pause menu's Save game, as a command: saved there and then, without 1988's Quit prompt (storage.ts saveCommand). */
 export const SAVE_NOW = 0x109;
 
+/**
+ * The tactical turn's own keys (tactics.ts): End Turn (the hotbar's, E on a keyboard), the turn's last move taken back
+ * (Undo, Backspace), and the Pause menu's Tactical fights, as a command.
+ */
+export const END_TURN = 0x1e8;
+export const UNDO_ACTION = 0x1e9;
+export const TACTICAL_FIGHTS = 0x1ea;
+
 /** Play the harpsichord, as a command: its keyboard (harpsichord.ts), from Play or a walk into it (apart from menu.ts's own 0x104-0x10c). */
 export const HARPSICHORD = 0x106;
 

@@ -180,7 +180,6 @@ export default defineConfig(({ mode }) => ({
         mapcells: fileURLToPath(new URL('mapcells.html', import.meta.url)),
         runes: fileURLToPath(new URL('runes.html', import.meta.url)),
         debug: fileURLToPath(new URL('debug.html', import.meta.url)),
-        tactics: fileURLToPath(new URL('tactics.html', import.meta.url)),
       },
     },
   },

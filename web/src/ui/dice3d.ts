@@ -1,7 +1,7 @@
 /**
  * dice3d.ts
  *
- * The dice, as solids: d4, d6, d8, d10, d12 and d20, each a polyhedron
+ * The dice of a tactical turn (game/tactics.ts), as solids: d4, d6, d8, d10, d12, d20 and d30, each a polyhedron
  * with its numbers on its faces, drawn flat-shaded and glossy at a coarse
  * grain and scaled up without smoothing, so they sit among the game's
  * pixels as pixelated 3D.
@@ -190,6 +190,8 @@ function makeSolid(sides: number): Solid {
       verts = dod;
       normals = ico.map(norm);
     }
+  } else if (sides === 30) {
+    return d30();
   } else {
     return d10();
   }
@@ -228,9 +230,31 @@ function d10(): Solid {
   return { ...s, values: oppositeValues(s.normals, 10).map((v) => v) };
 }
 
+/**
+ * The rhombic triacontahedron: the icosahedron's twelve corners and its dual's twenty, thirty rhombs, each about the
+ * middle of one of the icosahedron's edges (1988's roll to hit runs to 30).
+ */
+function d30(): Solid {
+  const ico: V3[] = [];
+  for (const a of [-1, 1]) for (const b of [-PHI, PHI]) ico.push([0, a, b], [a, b, 0], [b, 0, a]);
+  const dod: V3[] = [];
+  for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) dod.push([x, y, z]);
+  for (const a of [-1 / PHI, 1 / PHI]) for (const b of [-PHI, PHI]) dod.push([0, b, a], [b, a, 0], [a, 0, b]);
+  const normals: V3[] = [];
+  for (let i = 0; i < ico.length; i++)
+    for (let j = i + 1; j < ico.length; j++) {
+      const d = sub(ico[i], ico[j]);
+      if (Math.abs(dot(d, d) - 4) < 1e-6) normals.push(norm(add(ico[i], ico[j])));
+    }
+  const verts = [...ico, ...dod];
+  const faces = faceFromNormals(verts, normals);
+  const s = finish(30, verts, faces);
+  return { ...s, values: oppositeValues(s.normals, 30) };
+}
+
 const SOLIDS = new Map<number, Solid>();
 export function solid(sides: number): Solid {
-  const s = [4, 6, 8, 10, 12, 20].includes(sides) ? sides : 6;
+  const s = [4, 6, 8, 10, 12, 20, 30].includes(sides) ? sides : 6;
   let out = SOLIDS.get(s);
   if (!out) SOLIDS.set(s, (out = makeSolid(s)));
   return out;
@@ -322,7 +346,7 @@ export function drawDie(ctx: CanvasRenderingContext2D, s: Solid, m: M3, cx: numb
     ctx.save();
     ctx.setTransform(rx * k, ry * k, -ux * k, -uy * k, cx + px * r, cy + py * r);
     ctx.globalAlpha = Math.min(1, (facing - 0.5) * 4);
-    ctx.font = 'bold 32px Arial, sans-serif';
+    ctx.font = '32px "U5 Letters", monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     const dy = s.sides === 4 ? -5 : 2;

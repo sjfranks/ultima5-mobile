@@ -9,6 +9,7 @@ import { egaTileArt } from './ui/egaTiles.ts';
 import { CARVE_STYLES, type CarveStyle } from './ui/carve.ts';
 import { drawCombatMarks } from './game/combat.ts';
 import { gameFiles } from './boot.ts';
+import { Status } from './game/save.ts';
 import { loadAppleArt, loadStandardArt, loadStandardFont } from './ui/loadArt.ts';
 import { HI_HEIGHT, HI_WIDTH } from './ui/framebuffer.ts';
 import { readFont } from './data/font.ts';
@@ -21,6 +22,7 @@ import { currentCharacter, localSave, restore } from './game/storage.ts';
 import { watchOtherWindows } from './game/otherWindows.ts';
 import { Intro, unmadeAvatar } from './game/intro.ts';
 import { Screen } from './ui/screen.ts';
+import { installTacticsView } from './ui/tacticsView.ts';
 import { installPageHooks } from './ui/pageHooks.ts';
 import { PcSound } from './ui/sound.ts';
 import { loadOptions } from './game/settings.ts';
@@ -43,7 +45,7 @@ const capacitor = (window as { Capacitor?: CapacitorLike }).Capacitor;
 const native = Boolean(capacitor?.isNativePlatform?.());
 let updateReady = false;
 const applyUpdate =
-  location.protocol.startsWith('http') && !native && !import.meta.env.DEV
+  location.protocol.startsWith('http') && !native && !import.meta.env.DEV && import.meta.env.VITE_DEMO !== '1'
     ? registerSW({
         onNeedRefresh() {
           updateReady = true;
@@ -305,6 +307,8 @@ async function start(): Promise<void> {
   g.hooks.quit = appQuit(location.protocol, () => window.close(), capacitor);
   g.ool.under.set(files.get('INIT.OOL').subarray(0, 256));
   g.drawCombatMarks = () => drawCombatMarks(g);
+  // Tactical turns' marks and dice, on the page (ui/tacticsView.ts).
+  installTacticsView(g, screen);
   (window as unknown as { u5: unknown }).u5 = { g, screen };
   canvas.focus();
   const params = new URLSearchParams(location.search);
@@ -312,7 +316,25 @@ async function start(): Promise<void> {
   if (import.meta.env.DEV && params.has('peek')) localSave.off = true;
   // ?play skips the title in development: the saved game, or a new one.
   const saved = localSave.read();
-  if (import.meta.env.DEV && params.has('play')) {
+  // A demo build (VITE_DEMO=1, tools/tactics-demo.ts): the party of the copy's own SAVED.GAM, no title, nothing kept, and
+  // the Tactical fights' list at the first prompt.
+  const demo = import.meta.env.VITE_DEMO === '1';
+  if (demo) {
+    localSave.off = true;
+    g.s.b.set(files.get('SAVED.GAM').subarray(0, g.s.b.length));
+    const ool = files.has('SAVED.OOL') ? files.get('SAVED.OOL') : files.get('INIT.OOL');
+    g.ool.brit.set(ool.subarray(0, 256));
+    if (ool.length >= 512) g.ool.under.set(ool.subarray(256, 512));
+    // The demo's party: the save's six companions, rested - a fight of the series wants a party whole.
+    g.s.partySize = Math.max(g.s.partySize, Math.min(6, g.s.members.filter((m) => m.name.trim() !== '').length));
+    for (const m of g.s.members.slice(0, g.s.partySize)) {
+      m.hp = m.maxHp;
+      m.status = Status.Good;
+    }
+    const { queueKeys } = await import('./game/input.ts');
+    const { TACTICAL_FIGHTS } = await import('./game/io.ts');
+    queueKeys(TACTICAL_FIGHTS);
+  } else if (import.meta.env.DEV && params.has('play')) {
     if (saved && !params.has('new')) restore(g, saved);
     else unmadeAvatar(g);
   } else {

@@ -18,7 +18,7 @@ import { drawTextCard } from './shopCard.ts';
 import { CF, Game } from './game.ts';
 import { menuKey, PAUSED } from './input.ts';
 import { besideHarpsichord } from './harpsichord.ts';
-import { HARPSICHORD, K, Pad, pickOf, SAVE_NOW, scrollOf } from './io.ts';
+import { END_TURN, HARPSICHORD, K, Pad, pickOf, SAVE_NOW, scrollOf, TACTICAL_FIGHTS, UNDO_ACTION } from './io.ts';
 import { somethingBeside } from './items.ts';
 import { itemCounts, nextHeld, unloaded } from './zstats.ts';
 import { holdFullPanel } from './layout.ts';
@@ -1369,6 +1369,11 @@ export function contextual(g: Game): Item[] {
     const take = { label: 'Loot and Leave', key: LOOT, enabled: loot === 'show' };
     out.unshift(...(loot === 'show' ? [take, leave] : loot === 'grey' ? [leave, take] : [leave]));
   }
+  // A tactical turn's own (tactics.ts): End turn, its actions left passed; Undo, the turn's last step taken back.
+  if (where === 'combat' && g.tactics.on && g.tactics.turn === s.combatTurn) {
+    out.push({ label: 'End turn', key: END_TURN });
+    out.push({ label: 'Undo step', key: UNDO_ACTION, enabled: g.tactics.undo !== null });
+  }
   return out;
 }
 
@@ -1778,14 +1783,15 @@ export async function pauseMenu(g: Game, midCommand = false): Promise<number> {
           },
         },
         {
-          // The tactical fights (src/tactics, tactics.html): Britannia's creatures on its own arenas, as a board game
-          // with dice, five fights of their own; the game here is left as it was last saved.
+          // The tactical series (tactics.ts): a fight chosen and fought, the game put back as it was after - so not in a
+          // fight, nor inside a command.
           label: 'Tactical fights',
-          note: 'Five fights as a board game with dice. Play since the last save is lost: save first.',
+          enabled: g.s.mapId !== 0xff && !midCommand && !g.inDungeon,
+          ...noSave(g.s.mapId !== 0xff && !midCommand && !g.inDungeon, 'Tactical fights'),
+          note: "1988's creatures, two actions a turn, the dice shown. The game is put back as it was after.",
           act: async () => {
-            if (!(await confirm(g, 'Leave for the tactical fights? Play since the last save is lost.'))) return;
-            location.href = `${import.meta.env.BASE_URL}tactics.html`;
-            return 0;
+            await restoreView(g);
+            return TACTICAL_FIGHTS;
           },
         },
         {
@@ -2132,6 +2138,12 @@ export function gameplayLines(g: Game): Setting[] {
       label: `Rules: ${RULES_NAMES[o.rules]}`,
       note: RULES_NOTES[o.rules],
       act: () => void (o.rules = RULES[(RULES.indexOf(o.rules) + 1) % RULES.length]),
+    },
+    {
+      // Tactical turns (tactics.ts): two actions a turn, the dice shown; Off, 1988's one.
+      label: `Turns: ${o.tacticalTurns ? 'Two actions' : 'One (1988)'}`,
+      note: 'Two: a step, blow or spell each, the dice shown.',
+      act: () => void (o.tacticalTurns = !o.tacticalTurns),
     },
     {
       // Snap attacks (settings.ts autoAim, its name once Auto aim).

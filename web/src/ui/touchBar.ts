@@ -13,7 +13,8 @@
 
 import { firesHere } from '../game/input.ts';
 import type { Game } from '../game/game.ts';
-import { K, Pad } from '../game/io.ts';
+import { END_TURN, K, Pad, UNDO_ACTION } from '../game/io.ts';
+import { CF } from '../game/game.ts';
 import { buttonLook, toneKey } from './buttonLook.ts';
 import { touchMode } from './directTouch.ts';
 import { pixelIcon, type Icon } from './pixelIcons.ts';
@@ -26,6 +27,12 @@ interface Button {
   code: number;
   main?: boolean;
   icon?: Icon;
+  /** The hotbar's (tactical turns): a count in the corner, the die it rolls, greyed where it can do nothing now. */
+  badge?: string;
+  die?: string;
+  off?: boolean;
+  /** Done here, not sent to the game (the hotbar's pages). */
+  local?: () => void;
 }
 
 /**
@@ -169,6 +176,7 @@ export class TouchBar {
         return { middle: [] };
       case 'command': {
         const fight = g.commandPrompt === 'combat';
+        if (fight && this.tacticalTurn()) return this.hotbar();
         const fire = !fight && firesHere(g);
         // The Pause menu beside the pane, upright (paneTabs.ts); held sideways, with no pane, here at the far end.
         const pause: Button[] = this.placed?.tabs ? [] : [{ label: 'Pause menu', code: Pad.Start, icon: 'menu' }];
@@ -219,9 +227,60 @@ export class TouchBar {
     }
   }
 
+  /** The hotbar's page (tactical turns), and whether it is a member's tactical turn at the prompt now. */
+  private page = 0;
+  private tacticalTurn(): boolean {
+    const g = this.g;
+    const t = g.tactics;
+    const c = g.combat[g.s.combatTurn];
+    return t.on && t.turn === g.s.combatTurn && !!c && (c.flags & CF.Player) !== 0;
+  }
+
+  /**
+   * The hotbar, a tactical turn's (game/tactics.ts): the turn's commands in pages of five - Attack, Cast, Use, Pass and
+   * Undo; the Act menu, Ready, Ztats, Switch Weapon and the Pause menu - and End Turn always last; the pages turned by
+   * the arrows either side. Each the game's own command, sent as its key.
+   */
+  private hotbar(): Row {
+    const g = this.g;
+    const t = g.tactics;
+    const mixtures = g.s.mixtures.reduce((a: number, b: number) => a + b, 0);
+    const pages: Button[][] = [
+      [
+        { label: 'Attack', code: Pad.X, icon: 'sword', main: true, die: 'd30' },
+        { label: 'Cast', code: Pad.Y, badge: `x${mixtures}`, off: mixtures === 0 },
+        { label: 'Use', code: 0x55 },
+        { label: 'Pass', code: K.Space },
+        { label: 'Undo', code: UNDO_ACTION, icon: 'back', off: !t.undo },
+      ],
+      [
+        { label: 'Act', code: Pad.A },
+        { label: 'Ready', code: 0x52 },
+        { label: 'Ztats', code: 0x5a },
+        { label: 'Switch', code: 0x57 },
+        { label: 'Pause menu', code: Pad.Start, icon: 'menu' },
+      ],
+    ];
+    if (this.page >= pages.length) this.page = 0;
+    const turn = (d: number) => (): void => {
+      this.page = (this.page + d + pages.length) % pages.length;
+      this.shownKey = '';
+      this.update();
+    };
+    return {
+      middle: [
+        { label: '<', code: -1, local: turn(-1), icon: 'left' },
+        ...pages[this.page],
+        { label: '>', code: -1, local: turn(1), icon: 'right' },
+        { label: 'End', code: END_TURN, badge: `${t.left}` },
+      ],
+    };
+  }
+
   /** Draw the buttons again where what they should be has changed (or the frame's colours, or the letters' size). */
   update(): void {
     const p = this.placed;
+    if (!this.on && this.g.tactics.on && this.g.s.mapId === 0xff) this.enabled = true;
     if (!this.on || !p?.bar) {
       this.root.style.display = 'none';
       return;
@@ -235,11 +294,12 @@ export class TouchBar {
     const ordered = left ? [row.primary, ...middle, row.back] : [row.back, ...middle, row.primary];
     const buttons = ordered.filter((b): b is Button => b !== undefined);
     const tone = this.screen.tone();
-    const size = Math.max(12, this.screen.letterPx());
+    // The hotbar's eight in a row: its letters a little smaller, to fit.
+    const size = buttons.length > 6 ? Math.min(Math.max(9, this.screen.letterPx() * 0.78), 12) : Math.max(12, this.screen.letterPx());
     const inset = !p.barSide && row.primary !== undefined && buttons.length <= 4;
     const key =
       `${p.barSide ? 's' : 'b'}:${left ? 'l' : 'r'}:${inset ? 1 : 0}:${toneKey(tone)}:${size.toFixed(1)}:` +
-      buttons.map((b) => `${b.label}/${b.code}/${b.main ? 1 : 0}`).join(',');
+      buttons.map((b) => `${b.label}/${b.code}/${b.main ? 1 : 0}/${b.badge ?? ''}/${b.off ? 1 : 0}`).join(',');
     if (key === this.shownKey) return;
     this.shownKey = key;
     const root = this.root;
@@ -257,11 +317,20 @@ export class TouchBar {
     el.type = 'button';
     if (b.icon) el.appendChild(pixelIcon(b.icon, Math.round(size * 1.6)));
     else el.textContent = b.label;
+    // The hotbar's corners: a count, the die it rolls - in the bar's letters, smaller.
+    const corner = (text: string, where: string): void => {
+      const span = document.createElement('span');
+      span.textContent = text;
+      span.style.cssText = `position:absolute;${where};font:${Math.max(8, Math.round(size * 0.6))}px/1 ${FACE};opacity:0.85;pointer-events:none;`;
+      el.appendChild(span);
+    };
+    if (b.badge) corner(b.badge, 'right:4px;top:3px');
+    if (b.die) corner(b.die, 'right:4px;bottom:3px');
     el.setAttribute('aria-label', b.label);
     const look = buttonLook(tone, !!b.main);
-    const grow = b.main && !side ? MAIN_WIDER : 1;
+    const grow = b.local ? 0 : b.main && !side ? MAIN_WIDER : 1;
     el.style.cssText =
-      `pointer-events:auto;touch-action:manipulation;flex:${side ? '0 0 auto' : `${grow} 1 0`};min-width:0;` +
+      `pointer-events:auto;touch-action:manipulation;flex:${side ? '0 0 auto' : b.local ? '0 0 26px' : `${grow} 1 0`};min-width:0;` +
       `max-width:${side ? 'none' : `${Math.round(96 * grow)}px`};display:flex;align-items:center;justify-content:center;` +
       // Across the foot, as deep as the bar leaves (deeper where the phone is tall), up to a thumb's breadth.
       `height:${side ? '52px' : `min(${BUTTON_DEEPEST}px, 100%)`};padding:0 ${count > 4 ? 2 : 4}px;box-sizing:border-box;border-radius:10px;` +
@@ -269,15 +338,29 @@ export class TouchBar {
       // The words no smaller than the log's letters, in their face.
       `font:${size.toFixed(1)}px/1 ${FACE};letter-spacing:0;` +
       'white-space:nowrap;overflow:hidden;text-overflow:clip;-webkit-tap-highlight-color:transparent;' +
-      'box-shadow:0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.14);';
+      'box-shadow:0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.14);position:relative;' +
+      (b.off ? 'filter:grayscale(1) brightness(0.6);' : '');
     const lit = (on: boolean): void => {
-      el.style.filter = on ? 'brightness(1.45)' : '';
+      const base = b.off ? 'grayscale(1) brightness(0.6)' : '';
+      el.style.filter = on ? `${base} brightness(1.45)` : base;
       el.style.transform = on ? 'translateY(1px)' : '';
     };
     el.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
       lit(true);
+      if (b.local) {
+        b.local();
+        return;
+      }
+      if (b.off) {
+        // greyed: a shake, and nothing sent (the hotbar's)
+        el.animate?.(
+          [{ transform: 'translateX(-4px)' }, { transform: 'translateX(4px)' }, { transform: 'translateX(-2px)' }, { transform: 'none' }],
+          300,
+        );
+        if (b.code !== UNDO_ACTION) return;
+      }
       this.options.onPress();
       this.options.send(b.code);
       // The next buttons come with what the game does next.

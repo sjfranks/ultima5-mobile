@@ -1,240 +1,245 @@
 /**
  * tactics-e2e.cjs
  *
- * The tactical board in a real browser (Playwright, Chromium), by real
- * taps and drags on the page: select a hero, tap to move, undo it, drag a
- * path and trim it back, tap a foe out of reach for the Confirm pill and
- * confirm it, check that each die lands on the face its roll event says and
- * that undo is refused after a roll, drag onto a foe to walk and strike,
- * and end the turn through its dialog.
+ * Tactical turns (src/game/tactics.ts) in the game itself, in Chromium, by real taps on a phone's screen: a fight in an
+ * arena, its squares marked and walked to (marked first, as Fight taps: Confirm has it), a step undone, a walk of two
+ * squares, a foe a step off marked - its odds shown - and walked to and struck, each die landing on the face the rules
+ * rolled, Undo refused once dice have rolled, End Turn asked through the game's own question; and the Pause menu's
+ * Tactical fights.
  *
- * Needs the dev server with the developer's own game files (gamedata/):
- *   npx vite --port 5173 &   node tools/tactics-e2e.cjs [http://localhost:5173]
+ * Needs the dev server and the developer's own game files (gamedata/), which the installer's autoscan takes up:
+ *   npx vite --port 5173 &   node tools/tactics-e2e.cjs [http://localhost:5173] [shots-dir]
  */
 
 const { chromium } = require('playwright');
 
 const BASE = process.argv[2] ?? 'http://localhost:5173';
+const SHOTS = process.argv[3] ?? null;
 let failures = 0;
 const check = (ok, what) => {
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`);
   if (!ok) failures++;
 };
 
+async function game(browser, url, touch = true) {
+  const ctx = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: touch,
+    isMobile: touch,
+    deviceScaleFactor: touch ? 2 : 1,
+  });
+  const p = await ctx.newPage();
+  const errors = [];
+  p.on('pageerror', (e) => errors.push(e.message));
+  await p.goto(url);
+  await p.waitForFunction(() => window.u5 && window.u5tactics, null, { timeout: 60000 });
+  return { ctx, p, errors };
+}
+
 (async () => {
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  const errors = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-
-  const idle = () =>
-    page.waitForFunction(() => window.__tactics && window.__tactics.fight && !window.__tactics.busy && window.__tactics.active, null, {
-      timeout: 30000,
-    });
-  const screen = (x, y) => page.evaluate(([x, y]) => window.__tactics.toScreen(x, y), [x, y]);
-  const hero = () =>
-    page.evaluate(() => {
-      const u = window.__tactics.active;
-      return u && { id: u.id, x: u.x, y: u.y, actions: u.actions, name: u.name };
-    });
-  const tapCell = async (x, y) => {
-    const [sx, sy] = await screen(x, y);
-    await page.mouse.click(sx, sy);
+  const { p, errors } = await game(browser, `${BASE}/index.html?play&new&peek&autoscan=true&at=arena:2`);
+  const shot = async (name) => SHOTS && (await p.screenshot({ path: `${SHOTS}/${name}.png` }));
+  const at = (x, y) =>
+    p.evaluate(
+      ([x, y]) => {
+        const { screen } = window.u5;
+        const b = screen.presented.blits.find((b) => b.part === 'view' || b.part === 'screen');
+        const r = screen.canvas.getBoundingClientRect();
+        const k = r.width / screen.canvas.width;
+        return [
+          r.left + (b.dx + (8 + x * 16 + 8 - b.sx) * (b.dw / b.sw)) * k,
+          r.top + (b.dy + (8 + y * 16 + 8 - b.sy) * (b.dh / b.sh)) * k,
+        ];
+      },
+      [x, y],
+    );
+  const tap = async (x, y) => {
+    const [cx, cy] = await at(x, y);
+    await p.touchscreen.tap(cx, cy);
+    await p.waitForTimeout(120);
   };
-
-  // a fight and seed where the first member to act is a fighter with a foe in reach after a walk
-  let seed = 0;
-  for (let s = 1; s < 60; s++) {
-    await page.goto(`${BASE}/tactics.html?fight=3&seed=${s}&devdata`);
-    await idle();
-    const ok = await page.evaluate(() => {
-      const t = window.__tactics;
-      const u = t.active;
-      return !u.abilities[0].ranged && !u.abilities[0].spell && t.targetList.some((x) => x.path);
+  const state = () =>
+    p.evaluate(() => {
+      const { g, screen } = window.u5;
+      const t = g.tactics;
+      const i = g.s.combatTurn;
+      const c = g.combat[i];
+      return {
+        i,
+        x: c?.x,
+        y: c?.y,
+        left: t.left,
+        turn: t.turn,
+        undo: !!t.undo,
+        member: !!(c && c.flags & 0x80),
+        ready: g.commandPrompt === 'combat' && screen.waiting && t.turn === i,
+        log: g.p.text ? '' : '',
+      };
     });
-    if (ok) {
-      seed = s;
-      break;
+  let seen = false;
+  const ready = async () => {
+    for (let k = 0; k < 400; k++) {
+      const s = await state();
+      if (s.ready && s.member) return s;
+      // the fight over (won, or lost): a new one, for what is left to check
+      const { won, fighting } = await p.evaluate(() => ({ won: window.u5.g.s.battleWon !== 0, fighting: window.u5.g.s.mapId === 0xff }));
+      if (fighting) seen = true;
+      if (seen && (won || !fighting)) return null;
+      await p.waitForTimeout(100);
     }
-  }
-  check(seed > 0, `found a start with a foe in reach after a walk (seed ${seed})`);
-
-  // select the hero: its first ability is armed
-  let h = await hero();
-  await tapCell(h.x, h.y);
-  const armed = await page.evaluate(() => window.__tactics.armed);
-  check(armed === 'attack', `selecting ${h.name} arms the basic attack`);
-  check((await page.locator('.slot.sel').count()) === 1, 'its slot is lifted');
-
-  // tap a blue square: walk there at once, one action
-  const dest = await page.evaluate(() => {
-    const t = window.__tactics;
-    const r = [...t.reachMap.values()].find((q) => q.cost === 1);
-    return r && { x: r.x, y: r.y };
-  });
-  await tapCell(dest.x, dest.y);
-  await idle();
-  let after = await hero();
-  check(after.x === dest.x && after.y === dest.y && after.actions === 1, 'tapping a blue square walks there for one action');
-
-  // undo the move (Z)
-  await page.keyboard.press('z');
-  await idle();
-  after = await hero();
-  check(after.x === h.x && after.y === h.y && after.actions === 2, 'undo takes the move back');
-
-  // drag a path, then trim it back
-  h = await hero();
-  const way = await page.evaluate(() => {
-    const t = window.__tactics;
-    const f = t.fight;
-    const u = t.active;
-    // a straight run of three open squares from the hero, any way round
-    for (const [dx, dy] of [
-      [0, -1],
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-    ]) {
-      const run = [1, 2, 3].map((k) => ({ x: u.x + dx * k, y: u.y + dy * k }));
-      if (run.every((q) => f.costAt(q.x, q.y) === 1 && !f.at(q.x, q.y))) return run;
-    }
-    return null;
-  });
-  check(!!way, 'there is a straight run to drag along');
-  {
-    const [hx, hy] = await screen(h.x, h.y);
-    await page.mouse.move(hx, hy);
-    await page.mouse.down();
-    for (const q of way) {
-      const [x, y] = await screen(q.x, q.y);
-      await page.mouse.move(x, y, { steps: 5 });
-    }
-    const len3 = await page.evaluate(() => window.__tactics.dragging && window.__tactics.dragging.path.length);
-    check(len3 === 4, `the path grows square by square (${len3 - 1} squares)`);
-    const [bx, by] = await screen(way[1].x, way[1].y);
-    await page.mouse.move(bx, by, { steps: 5 });
-    const len2 = await page.evaluate(() => window.__tactics.dragging && window.__tactics.dragging.path.length);
-    check(len2 === 3, `dragging back over the path trims it (${len2 - 1} squares)`);
-    await page.mouse.up();
-    await idle();
-    after = await hero();
-    check(after.x === way[1].x && after.y === way[1].y, 'release walks the trimmed path');
-    await page.keyboard.press('z');
-    await idle();
-  }
-
-  // an invalid release drops the piece back home
-  {
-    h = await hero();
-    const [hx, hy] = await screen(h.x, h.y);
-    await page.mouse.move(hx, hy);
-    await page.mouse.down();
-    await page.mouse.move(hx + 4, hy - 30, { steps: 3 });
-    await page.mouse.move(5, 300, { steps: 6 });
-    await page.mouse.up();
-    await page.waitForTimeout(200);
-    after = await hero();
-    check(after.x === h.x && after.y === h.y && after.actions === 2, 'release off the board drops it back home');
-  }
-
-  // tap a foe out of reach: the Confirm pill, the red path, 2 actions
-  const far = await page.evaluate(() => {
-    const t = window.__tactics;
-    const x = t.targetList.find((q) => q.path);
-    return x && { x: x.x, y: x.y, id: x.id };
-  });
-  await tapCell(far.x, far.y);
-  check((await page.locator('.pill.show').count()) === 1, 'a foe in reach only after a walk asks Confirm?');
-  // tap elsewhere: cancelled
-  await page.mouse.click(5, 300);
-  check((await page.locator('.pill.show').count()) === 0, 'tapping elsewhere cancels it');
-  await tapCell(far.x, far.y);
-  await page.locator('.pill.show').click();
-  // the dice: each lands on the face its roll event chose
-  await page.waitForFunction(() => window.__tactics.dice.length > 0 && window.__tactics.diceFaces().every((d) => d.landed), null, {
-    timeout: 15000,
-  });
-  const faces = await page.evaluate(() => window.__tactics.diceFaces());
-  const rolled = await page.evaluate(() => {
-    const e = window.__tactics.lastEvents.find((x) => x.t === 'roll');
-    return e.roll.rows.flatMap((r) => r.vals);
-  });
-  check(
-    faces.length > 0 && faces.every((d) => d.up === d.value),
-    `every die lands on its face (${faces.map((d) => `d${d.sides}:${d.up}`).join(' ')})`,
-  );
-  check(
-    JSON.stringify(faces.slice(0, rolled.length).map((d) => d.value)) === JSON.stringify(rolled),
-    `the dice show the roll event's values (${rolled.join(', ')})`,
-  );
-  await page.waitForFunction(() => !window.__tactics.busy, null, { timeout: 30000 });
-  const spent = await page.evaluate(() => window.__tactics.lastEvents.filter((e) => e.t === 'move' || e.t === 'roll').map((e) => e.t));
-  check(spent[0] === 'move' && spent.includes('roll'), 'confirming walks, then strikes');
-  // dice are final
-  const before = await page.evaluate(() => JSON.stringify(window.__tactics.fight.S));
-  await page.keyboard.press('z');
-  await page.waitForTimeout(150);
-  const after2 = await page.evaluate(() => JSON.stringify(window.__tactics.fight.S));
-  check(before === after2, 'undo after a roll does nothing');
-
-  // the turn passes by itself at 0 actions; then a member who can drag onto a foe
-  await idle();
-  let dragged = false;
-  for (let turn = 0; turn < 8 && !dragged; turn++) {
-    await idle();
-    const t = await page.evaluate(() => {
-      const t = window.__tactics;
-      const u = t.active;
-      const near = t.targetList.find((q) => t.fight.unit(q.id).side === 'foe' && !u.abilities[0].ranged && !u.abilities[0].spell);
-      return near ? { x: near.x, y: near.y, id: near.id, hx: u.x, hy: u.y } : null;
+    throw new Error('no member came to their prompt');
+  };
+  const view = (fn, ...args) => p.evaluate(fn, args);
+  // what the game prints to its log, kept as it is printed
+  const said = () =>
+    p.evaluate(() => {
+      const g = window.u5.g;
+      if (!window.__said) {
+        window.__said = ' ';
+        const print = g.print.bind(g);
+        g.print = (t) => {
+          window.__said += t;
+          print(t);
+        };
+      }
     });
-    if (!t) {
-      await page.keyboard.press('e');
-      await page.waitForTimeout(100);
-      await page.keyboard.press('Enter');
+  await said();
+  const logText = () => p.evaluate(() => window.__said);
+
+  // the turn: two actions, the squares in reach marked
+  let s = await ready();
+  check(s.left === 2, `a member's turn starts with two actions (combatant ${s.i})`);
+  const reach = await view(([i]) => [...window.u5tactics.reach(i)].map(([k, n]) => ({ x: k & 15, y: k >> 4, n })), s.i);
+  check(reach.some((r) => r.n === 1) && reach.some((r) => r.n === 2), `its reach marks squares a step and two steps off (${reach.length})`);
+  await shot('1-turn');
+
+  // a square a step off: marked at the first tap, walked to at the second
+  const one = reach.find((r) => r.n === 1);
+  await tap(one.x, one.y);
+  const marked = await view(() => window.u5.screen.wayShown?.()?.kind ?? null);
+  check(marked === 'walk', 'the first tap marks the way (Fight taps: Confirm)');
+  await tap(one.x, one.y);
+  let after = await ready();
+  check(after.x === one.x && after.y === one.y && after.left === 1, 'the second tap walks there, one action spent');
+  check(after.undo, 'a step can be taken back');
+  await shot('2-stepped');
+
+  // Undo, from the hotbar
+  await p.locator('button[aria-label="Undo"]').tap();
+  after = await ready();
+  check(after.x === s.x && after.y === s.y && after.left === 2, 'Undo takes the step back, both actions again');
+
+  // two squares: both actions, and the turn goes on to the next
+  const two = (await view(([i]) => [...window.u5tactics.reach(i)].map(([k, n]) => ({ x: k & 15, y: k >> 4, n })), s.i)).find(
+    (r) => r.n === 2,
+  );
+  await tap(two.x, two.y);
+  await tap(two.x, two.y);
+  for (let k = 0; k < 60; k++) {
+    const now = await view(([i]) => ({ x: window.u5.g.combat[i].x, y: window.u5.g.combat[i].y }), s.i);
+    if (now.x === two.x && now.y === two.y) break;
+    await p.waitForTimeout(100);
+  }
+  const walked = await view(([i]) => ({ x: window.u5.g.combat[i].x, y: window.u5.g.combat[i].y }), s.i);
+  check(walked.x === two.x && walked.y === two.y, 'a square two steps off is walked to with both actions');
+
+  // members come and go till one has a foe a step off; it is marked, its odds shown, then walked to and struck
+  let struck = false;
+  let refused = false;
+  let ended = false;
+  for (let turns = 0; turns < 60 && !(struck && refused && ended); turns++) {
+    s = await ready();
+    if (!s) {
+      seen = false;
+      await p.goto(`${BASE}/index.html?play&new&peek&autoscan=true&at=arena:2`);
+      await p.waitForFunction(() => window.u5 && window.u5tactics, null, { timeout: 60000 });
+      await said();
       continue;
     }
-    const [hx, hy] = await screen(t.hx, t.hy);
-    const [fx, fy] = await screen(t.x, t.y);
-    await page.mouse.move(hx, hy);
-    await page.mouse.down();
-    await page.mouse.move((hx + fx) / 2, (hy + fy) / 2, { steps: 6 });
-    await page.mouse.move(fx, fy, { steps: 6 });
-    await page.mouse.up();
-    await page.waitForFunction(() => !window.__tactics.busy, null, { timeout: 30000 });
-    const evs = await page.evaluate(() => window.__tactics.lastEvents.map((e) => e.t));
-    check(evs.includes('roll') && evs.includes('strike'), 'releasing on a foe walks and strikes');
-    dragged = true;
-  }
-  check(dragged, 'some member could drag onto a foe');
-
-  // end the turn: with actions left it asks first
-  for (let i = 0; i < 6; i++) {
-    await idle();
-    const u = await hero();
-    if (u.actions < 1) {
-      await page.waitForTimeout(600);
+    const targets = await view(
+      ([i]) => [...window.u5tactics.targets(i)].map(([j, step]) => ({ j, x: window.u5.g.combat[j].x, y: window.u5.g.combat[j].y, step })),
+      s.i,
+    );
+    const far = targets.find((t) => t.step);
+    const near = targets.find((t) => !t.step);
+    if (!struck && far && s.left === 2) {
+      await tap(far.x, far.y);
+      const way = await view(() => window.u5.screen.wayShown?.() ?? null);
+      check(way && way.kind === 'foe' && way.steps.length === 1, 'a foe a step off is marked first, the step shown');
+      await shot('3-marked-foe');
+      await tap(far.x, far.y);
+      await p.waitForFunction(() => window.u5tactics.faces().length > 0 && window.u5tactics.faces().every((f) => f.landed), null, {
+        timeout: 20000,
+      });
+      const faces = await view(() => window.u5tactics.faces());
+      const thrown = await view(() => window.u5.g.tactics.thrown.map((d) => d.value));
+      await shot('4-dice');
+      check(
+        faces.every((f) => f.up === f.value),
+        `each die lands on its face (${faces.map((f) => `d${f.sides}:${f.up}`).join(' ')})`,
+      );
+      check(
+        JSON.stringify(faces.slice(-thrown.length).map((f) => f.value)) === JSON.stringify(thrown),
+        `the dice are the rules' rolls (${thrown.join(', ')})`,
+      );
+      struck = true;
       continue;
     }
-    await page.locator('.slot.end').click();
-    const asked = await page.locator('.dialog').textContent();
-    check(
-      /End this turn\? .+ still has \d actions?\./.test(asked),
-      `End Turn asks first: "${asked.replace(/\s+/g, ' ').trim().slice(0, 60)}"`,
-    );
-    await page.keyboard.press('Enter');
-    await page.waitForFunction(
-      (id) => !window.__tactics.busy && (window.__tactics.fight.S.over || (window.__tactics.active && window.__tactics.active.id !== id)),
-      u.id,
-      { timeout: 30000 },
-    );
-    const next = await hero();
-    check(!next || next.id !== u.id, 'the turn passes on');
-    break;
+    if (struck && !refused && near && s.left === 2) {
+      await tap(near.x, near.y);
+      await tap(near.x, near.y);
+      const n = await ready();
+      if (n && n.i === s.i && n.left === 1) {
+        // the fight as it stands: everyone's place and hit points, the actions left
+        const board = () =>
+          view(() => JSON.stringify([window.u5.g.tactics.left, window.u5.g.combat.map((c) => [c.x, c.y, c.hp, c.flags])]));
+        const before = await board();
+        await p.locator('button[aria-label="Undo"]').tap();
+        await p.waitForTimeout(400);
+        const log = await logText();
+        check((await board()) === before, 'Undo after a roll changes nothing');
+        check(/Dice are final!/.test(log), 'and says so: dice are final');
+        refused = true;
+      }
+      continue;
+    }
+    if (refused && !ended && s.left === 2) {
+      await p.locator('button[aria-label="End"]').tap();
+      await p.waitForTimeout(500);
+      const asked = await view(() => (window.u5.g.menuShown?.labels ?? []).join(' '));
+      await shot('5-end-turn');
+      check(/still has 2 actions/.test(asked.replace(/\s+/g, ' ')), "End Turn asks first, in the game's own box");
+      // the box's lines: No, Yes - choose Yes
+      await p.keyboard.press('ArrowDown');
+      await p.keyboard.press('Enter');
+      for (let k = 0; k < 100; k++) {
+        const now = await state();
+        if (now.i !== s.i) break;
+        await p.waitForTimeout(100);
+      }
+      check((await state()).i !== s.i, 'the turn passes on');
+      ended = true;
+      continue;
+    }
+    // otherwise: walk toward the nearest foe, or pass
+    await p.locator('button[aria-label="Pass"]').tap();
+    await p.waitForTimeout(200);
   }
-
+  check(struck, 'a member walked to a foe and struck it');
+  check(refused, 'a member was refused an undo after a roll');
+  check(ended, 'a member ended their turn');
   check(errors.length === 0, `no page errors${errors.length ? ': ' + errors.join('; ') : ''}`);
+
+  // the Pause menu's Tactical fights
+  const { p: q, errors: e2 } = await game(browser, `${BASE}/index.html?play&new&peek&autoscan=true`, false);
+  await q.waitForTimeout(2500);
+  await q.keyboard.press('Escape');
+  await q.waitForTimeout(400);
+  const paused = await q.evaluate(() => window.u5.g.menuShown?.labels ?? []);
+  check(paused.includes('Tactical fights'), 'the Pause menu offers Tactical fights');
+  check(e2.length === 0, 'no page errors there');
+
   await browser.close();
   console.log(failures ? `${failures} failed` : 'all passed');
   process.exit(failures ? 1 : 0);

@@ -496,6 +496,7 @@ export class Screen implements Platform {
       }
       // The harpsichord's keyboard drawn again while a key is down or a number fades (drawHarp).
       if (this.harp && harpMoving(this.harp, performance.now())) this.fb.dirty = true;
+      if (this.overPageMoving?.()) this.fb.dirty = true;
       // Smooth motion: while anything in the view is on its way, the view glided over the picture (viewGlide.ts);
       // once all have come, the picture as it is.
       const gliding = this.viewGlide.moving(now);
@@ -539,6 +540,13 @@ export class Screen implements Platform {
 
   /** The way a tap will walk, or is walking, to be marked over the map (directTouch.ts); null for none. */
   wayShown: (() => WayShown | null) | null = null;
+  /**
+   * Drawn onto the colour page itself once it is made, at its own grain, before it is put on the canvas - so it is
+   * shown as the game's own pixels are (tacticsView.ts: a tactical turn's marks and dice); and whether it moves still,
+   * the page to be made again each frame while it does.
+   */
+  overPage: ((page: CanvasRenderingContext2D) => void) | null = null;
+  overPageMoving: (() => boolean) | null = null;
   /** Whether the whole log is open over the map (upright, in play): a tap on the log opens it, and closes it. */
   logOpen = false;
   /** Which the pane under the map shows (upright, in play): the party or the log (paneTabs.ts chooses). */
@@ -729,6 +737,11 @@ export class Screen implements Platform {
     const c = this.canvas;
     if (c.width !== w || c.height !== h) [c.width, c.height] = [w, h];
     this.base.putImageData(this.image, 0, 0);
+    if (this.overPage) {
+      this.base.save();
+      this.overPage(this.base);
+      this.base.restore();
+    }
     const ctx = this.ctx;
     // Where the screen goes (presentation.ts): whole, or in play on an upright screen taken apart.
     const p = present(w, h, this.playFrame(), this.panelSplit(), this.insets, this.barDepth(), this.logOpen, this.pane);

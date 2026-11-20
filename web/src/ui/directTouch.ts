@@ -38,6 +38,7 @@ import { harpKeys, K, Pad, TOUCH, touchAt, touchPick, touchScroll } from '../gam
 import { T } from '../game/tiles.ts';
 import { tileAt } from '../game/world.ts';
 import type { Screen } from './screen.ts';
+import { pathOf, targetsOf } from './tacticsView.ts';
 import { cancelsTouch } from './touch.ts';
 
 /** The view's squares: eleven a side, sixteen EGA pixels each, from (8, 8). */
@@ -822,6 +823,7 @@ export class DirectTouch {
       this.armed = null;
       return this.key(Pad.A);
     }
+    if (g.tactics.on && g.tactics.turn === i) return this.tacticalTap(square, i);
     if (g.options.confirmFight) {
       const a = this.armed;
       if (!a || a.x !== square.x || a.y !== square.y || a.turn !== i || a.fromX !== c.x || a.fromY !== c.y) {
@@ -843,6 +845,51 @@ export class DirectTouch {
     const tile = g.s.actors[c.actor].tile;
     const open = (x: number, y: number): boolean => combatantAt(g, x, y) < 0 && arenaFree(g, tile, x, y);
     this.key(firstStep(square.x, square.y, open, c.x, c.y) || arrowToward(dx, dy));
+  }
+
+  /**
+   * A tap in a tactical turn (game/tactics.ts), whose two actions a tap may spend both of: a foe in reach struck, as
+   * ever; a foe a step off, walked to and struck - two actions, so always marked first and done at a second tap on it;
+   * a square in the turn's reach walked to, a step an action. Fight taps: Confirm marks the rest first, as ever.
+   */
+  private tacticalTap(square: { x: number; y: number }, i: number): void {
+    const g = this.g;
+    const c = g.combat[i];
+    const a = this.armed;
+    const marked = !!a && a.x === square.x && a.y === square.y && a.turn === i && a.fromX === c.x && a.fromY === c.y;
+    const mark = (way: Way): void => {
+      this.armed = { x: square.x, y: square.y, turn: i, fromX: c.x, fromY: c.y };
+      this.setWay(way);
+    };
+    const arrow = (from: { x: number; y: number }, to: { x: number; y: number }): number => arrowToward(to.x - from.x, to.y - from.y);
+    const j = combatantAt(g, square.x, square.y);
+    const targets = targetsOf(g, i);
+    if (j >= 0 && onMonsterSide(g, j) && targets.has(j)) {
+      const step = targets.get(j)!;
+      if (step === null) {
+        if (g.options.confirmFight && !marked) return mark({ frame: 'view', steps: [], end: square, kind: 'foe' });
+        this.armed = null;
+        g.bumpFoe = { x: square.x, y: square.y, pointed: true };
+        return this.type(0x41);
+      }
+      if (!marked) return mark({ frame: 'view', steps: [step], end: square, kind: 'foe' });
+      this.armed = null;
+      g.bumpFoe = { x: square.x, y: square.y, pointed: true };
+      return this.type(arrow(c, step), 0x41);
+    }
+    const path = pathOf(g, i, square.x, square.y);
+    if (path.length) {
+      if (g.options.confirmFight && !marked) return mark({ frame: 'view', steps: path.slice(0, -1), end: square, kind: 'walk' });
+      this.armed = null;
+      const keys = path.map((p, k) => arrow(k === 0 ? c : path[k - 1], p));
+      this.type(...keys);
+      return;
+    }
+    // Anywhere else, a step toward it, as ever.
+    this.armed = null;
+    const tile = g.s.actors[c.actor].tile;
+    const open = (x: number, y: number): boolean => combatantAt(g, x, y) < 0 && arenaFree(g, tile, x, y);
+    this.key(firstStep(square.x, square.y, open, c.x, c.y) || arrowToward(square.x - c.x, square.y - c.y));
   }
 
   // --- Walking --------------------------------------------------------------------

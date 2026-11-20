@@ -377,58 +377,48 @@ has the whole list; the highlights:
   [Fixing the 1988 game](docs/fixing-1988.md) tells how they were found,
   down to the original Apple II disks.
 
-## Tactical fights
+## Tactical turns
 
-`tactics.html` (and **Tactical fights** in the Pause menu) plays five fights
-as a board game with dice: the Avatar, Shamino, Iolo and Jaana against
-Ultima V's own creatures, on its own arenas, drawn in the look's own tiles.
-Everything is read from the player's copy, as the game is: the creatures'
-table (strength, dexterity, intelligence, defence, attack, hit points and
-their flags), the arms' damage and defence, which tiles block, and the
-arenas of BRIT.CBT and DUNGEON.CBT.
+Fights here are a board game: **each fighter's turn is two actions**,
+where 1988's was one. An action is what a turn was: a step, a blow, a
+spell, a use, a pass. Everything else is 1988's fight as the engine
+plays it - whose turn comes when (each fighter's dexterity timer), the
+roll to hit (the target's dexterity against the attacker's), the blow
+(1 to the weapon's damage, less 1 to the armour), the creatures' minds,
+poison, sleep, charm, fields, and what a square does to whoever ends a
+turn on it, once a turn. Gameplay, **Turns**, has 1988's one action back.
 
-1. **Orcs on the Road** (the grass arena): six orcs and two headless.
-2. **The Fens** (the swamp, an ambush): rats, spiders, pythons and slimes.
-3. **Pirates Ashore** (the pirates' arena): a crew down the gangplanks.
-4. **The Halls of Deceit** (a dungeon room): skeletons, ghosts, a gazer.
-5. **The Dragon's Pass** (the hills): a dragon, two trolls and an ettin.
-
-- **Turns:** initiative is rolled once; the sides take turns, one figure at
-  a time. Every figure has two actions: a move is one, each blow or spell
-  is one; a walk then a blow is both. At no actions left the turn passes by
-  itself; End Turn asks first while actions are left.
-- **1988's numbers, as dice:** a blow rolls the weapon's damage as dice
-  (Long Sword 15, two d8; Halberd 30, three d10, reaching two squares) or
-  the creature's attack; all ones misses; a top face is a crit that
-  explodes and cuts through armour; missiles never explode; every blow
-  after the first in a turn rolls with disadvantage, as does one against a
-  creature far nimbler than the attacker (1988's dexterity to-hit). Armour
-  takes a fixed third of the defence off what lands. Undead take half of
-  every blow and never sleep; slimes divide; rats, spiders and pythons
-  poison; gremlins steal reagents; gazers charm; mages, reapers and daemons
-  hurl bolts; ettins throw boulders; dragons breathe fire over three
-  squares by three. The creatures' hit points are doubled on Normal (1.5
-  on Easy, 2.5 on Hard): 1988's table fells most of them with one blow.
-- **The spells** are 1988's: Grav Por, Mani (which raises a fallen
-  member), An Nox, In Zu, In Flam Grav (a wall of fire, turned Across or
-  Down), In Flam Hur and In Sanct, each with its reagents for the fight.
-- **Touch first:** a member's first ability is armed at once, so a tap on
-  a blue square walks and a tap on a red foe strikes; drag a figure to draw
-  its way square by square (back over it trims it), onto a foe to walk and
-  strike. A foe in reach only after a walk asks Confirm? first. Hover with
-  a mouse to see the way and the odds; pinch or wheel to zoom, drag the
-  board to pan.
-- **The dice** are thrown onto the field beside the target, real solids
-  (d4 to d20, blue for the party, red for the creatures) that tumble and
-  bounce to rest on the face the rules rolled. The rules roll first,
-  seeded; the view only shows it. Undo (Z, or the arrow at the top) takes
-  back what rolled no dice; dice are final.
-- `npm run tactics:sim 300` plays every fight headless with a party bot
-  against the creatures' own minds (about 100, 100, 94, 84 and 76% won);
-  `npm run tactics:e2e` taps and drags through a fight in Chromium (the
-  dev server running, `npx vite --port 5173`); `npm run tactics:demo
-  out.html` writes the fights as one page from your own copy, for yourself
-  alone (it carries the game's data: never commit it).
+- **The dice** fall where the rules roll them, thrown onto the field
+  beside whom they are for - blue for the party, red for the creatures:
+  the roll to hit on a d30, the blow and the armour on the least die that
+  holds their range (a long sword's 1 to 15 on a d20). Each lands on the
+  number the rules rolled, and the log says it ("d30 18>=9", "d12 6 -d4
+  1").
+- **On the field**, drawn as the game's own pixels: the squares the turn's
+  actions can walk to, washed blue, a pale line round them; the foes the
+  weapon reaches, red with white corners, and those it reaches after a
+  step, fainter; a gold pip over the member for each action left. A tap
+  walks (two squares, both actions) or strikes; a foe a step off is walked
+  to and struck, marked first and done at a second tap, its odds shown
+  over it - 1988's own, the roll's chance, the blow to expect and the
+  chance it fells it.
+- **The hotbar** is the touch bar's, in a member's turn: Attack, Cast,
+  Use, Pass and Undo; the Act menu, Ready, Ztats, Switch Weapon and the
+  Pause menu on its other page; and End, which asks first. Undo takes back
+  a step while the turn lasts, never a blow or a spell: dice are final. A
+  keyboard has Backspace for Undo, and E for End with Classic input; the
+  Act menu has both.
+- **Tactical fights** (the Pause menu): a series of five, 1988's creatures
+  on its own arenas, fought by the party as it is under the Classic rules,
+  the game put back exactly as it was after - Orcs on the Road (six orcs,
+  two headless, the grass), The Fens (rats, pythons, slimes, spiders, the
+  swamp), Pirates Ashore (fighters, bards and a mage, the pirates' shore),
+  The Dead of Yew (skeletons, ghosts and a gazer, the towne's cobbles) and
+  The Dragon's Pass (a dragon, two trolls and an ettin, the hills).
+- `npm run tactics:e2e` taps through a fight in Chromium (the dev server
+  running: `npx vite --port 5173`); `npm run tactics:demo <dir>` builds
+  the game as a demo of it from your own copy, for yourself alone (it
+  carries the game's files: never commit it).
 
 ## Design notes
 

@@ -86,6 +86,12 @@ export interface Options {
    */
   confirmFight: boolean;
   /**
+   * Tactical turns (the tactics fork's, tactics.ts): each fighter's turn is two actions - a step, a blow, a spell, a
+   * pass, each one - the dice shown as they fall, the squares within reach marked, the turn's hotbar on the touch bar.
+   * Off, 1988's: one action a turn.
+   */
+  tacticalTurns: boolean;
+  /**
    * Battery saver (the port's): the map rests - its water, its figures, the cursor - once a minute has gone by with
    * nothing pressed, until the next press (screen.ts waitKey). Off, it goes on as ever.
    */
@@ -277,6 +283,7 @@ export const DEFAULTS: Options = {
   dialog: 'play',
   hand: 'left',
   confirmFight: true,
+  tacticalTurns: true,
   batterySaver: false,
   snapTargets: true,
   maxInput: 'medium',
@@ -342,6 +349,7 @@ export function normaliseOptions(from: Saved): Partial<Options> {
   if (saved.dialog !== undefined && !DIALOGS.includes(saved.dialog)) delete saved.dialog;
   if (saved.hand !== undefined && !HANDS.includes(saved.hand)) delete saved.hand;
   if (saved.confirmFight !== undefined && typeof saved.confirmFight !== 'boolean') delete saved.confirmFight;
+  if (saved.tacticalTurns !== undefined && typeof saved.tacticalTurns !== 'boolean') delete saved.tacticalTurns;
   if (saved.batterySaver !== undefined && typeof saved.batterySaver !== 'boolean') delete saved.batterySaver;
   if (saved.snapTargets !== undefined && typeof saved.snapTargets !== 'boolean') delete saved.snapTargets;
   if (saved.maxInput !== undefined && !INPUT_PACE_NAMES.includes(saved.maxInput)) delete saved.maxInput;

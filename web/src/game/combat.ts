@@ -50,6 +50,8 @@ import { putAside } from './speech.ts';
 import { devMode } from '../devMode.ts';
 import { ammoHeld, spendOne } from './ammo.ts';
 import { shortArmNames } from './armNames.ts';
+import { putBack, rolled, sidesFor, snapshot, throwDice } from './tactics.ts';
+import { END_TURN, UNDO_ACTION } from './io.ts';
 
 /** Enemy flags (u5d macros.h ENEMY_FLAG_*). */
 export const EF = {
@@ -763,6 +765,7 @@ async function monsterShoots(g: Game, i: number, target: number, reflected: bool
   if (enemyFlags(g, kind) & EF.Magic) await cue(g, 'MonsterSpell', shoot);
   else if (!g.soundOff) await shoot();
   const hit = reflected ? false : hitRoll(g, target, i, -s.d588f, 0);
+  await throwDice(g);
   const victim = await missileAt(g, i, g.combat[target].x, g.combat[target].y, hit, missile);
   if (victim >= 0) {
     await hitFlash(g, victim, (enemyFlags(g, kind) & EF.Magic) !== 0);
@@ -796,7 +799,9 @@ async function monsterAttacks(g: Game, i: number): Promise<boolean> {
   if (kind === 0x2d) s.actors[c.actor].b6 = 0x20;
   if (!g.soundOff) await g.sound.sweep(0x2ee, 400, 5, 0x96);
   s.d58a8[target] = i;
-  if (!hitRoll(g, target, i, -s.d588f, 0)) return true;
+  const hit = hitRoll(g, target, i, -s.d588f, 0);
+  await throwDice(g);
+  if (!hit) return true;
   if (enemyFlags(g, kind) & EF.Steal && g.random(0, 3) !== 0 && s.food !== 0) {
     g.say(0x6d74); // "\nA "
     sayName(g, i);
@@ -907,7 +912,56 @@ export function hitRoll(g: Game, target: number, attacker: number, _unused: numb
   if (sure) return true;
   const tv = stat(g, target, t);
   const av = stat(g, attacker, a);
-  return Math.trunc((tv - av + 0x1e) / 2) <= roll(g);
+  const need = Math.trunc((tv - av + 0x1e) / 2);
+  const r = roll(g);
+  // Tactical turns: the roll shown as it fell, on a d30 (tactics.ts).
+  rolled(g, { sides: 30, value: r, foe: onMonsterSide(g, attacker), what: 'hit', need, at: target });
+  return need <= r;
+}
+
+/** What `attacker`'s roll to hit `target` with `weapon` must reach (as hitRoll), or null where it cannot miss. */
+export function hitNeed(g: Game, target: number, attacker: number, weapon: number): number | null {
+  const s = g.s;
+  if (s.d588f !== 0) {
+    if ((weapon > 0x29 && weapon < 0x32) || weapon === 0x33) return null;
+    return Math.trunc((stat(g, target, Q.Int) - stat(g, attacker, Q.Int) + 0x1e) / 2);
+  }
+  if (weapon === 0x27 || weapon === 0x23 || weapon === 0x28) return null;
+  return Math.trunc((stat(g, target, Q.Dex) - stat(g, attacker, weapon) + 0x1e) / 2);
+}
+
+/**
+ * What a blow from `attacker` with `weapon` does to `target`, as damageRoll and damage reckon it, every roll counted:
+ * the hurt to expect (a graze, nothing) and the chance it fells them. Null for a blow that is sure to kill (99).
+ */
+export function blowOdds(g: Game, attacker: number, target: number, weapon: number): { avg: number; kill: number; def: number } | null {
+  const ac = g.combat[attacker];
+  const tc = g.combat[target];
+  let lo = 1;
+  let hi: number;
+  if (ac.flags & CF.Monster) {
+    hi = enemy(g, ac.who).atk;
+    if (HEAVY_HITTERS.has(ac.who) && easedRules(g)) lo = Math.ceil(hi / 2);
+  } else hi = weapon === 0xff ? 1 : weapon === 0x28 ? 0 : g.data.bytes(0x15fc, 0x38)[weapon];
+  if (hi === 99 || weapon === 0x27) return null;
+  if (hi <= 1) lo = hi;
+  const def = tc.flags & CF.Monster ? enemy(g, tc.who).def : memberDefence(g, tc.who);
+  const hp = tc.flags & CF.Player ? g.s.members[tc.who].hp : tc.hp;
+  const halved = (tc.flags & CF.Monster) !== 0 && (enemyFlags(g, tc.who) & 0xff & EF.Undead) !== 0 && g.s.d5890 === 0;
+  const nothing = (tc.flags & CF.Monster) !== 0 && (enemyFlags(g, tc.who) & 0xff & EF.NoDamage) !== 0;
+  let sum = 0;
+  let kills = 0;
+  let n = 0;
+  for (let d = lo; d <= hi; d++)
+    for (let a = def ? 1 : 0; a <= def; a++) {
+      let hurt = Math.max(0, d - a);
+      if (halved) hurt = Math.trunc(hurt / 2);
+      if (nothing) hurt = 0;
+      sum += hurt;
+      if (hurt >= hp && hurt > 0) kills++;
+      n++;
+    }
+  return { avg: n ? sum / n : 0, kill: n ? kills / n : 0, def };
 }
 
 /**
@@ -932,7 +986,11 @@ export function damageRoll(g: Game, attacker: number, target: number): number {
     const who = g.combat[attacker].who;
     dmg = enemy(g, who).atk;
     const heavy = HEAVY_HITTERS.has(who) && easedRules(g);
-    if (dmg > 1 && dmg !== 99) dmg = g.random(heavy ? Math.ceil(dmg / 2) : 1, dmg);
+    if (dmg > 1 && dmg !== 99) {
+      const top = dmg;
+      dmg = g.random(heavy ? Math.ceil(dmg / 2) : 1, dmg);
+      rolled(g, { sides: sidesFor(top) ?? 30, value: dmg, foe: onMonsterSide(g, attacker), what: 'blow', at: target });
+    }
   } else {
     dmg = s.weapon;
     if (dmg === 0x27) {
@@ -948,13 +1006,20 @@ export function damageRoll(g: Game, attacker: number, target: number): number {
       dmg = 0;
     } else {
       dmg = g.data.bytes(0x15fc, 0x38)[dmg];
-      if (dmg > 1 && dmg !== 99) dmg = g.random(1, dmg);
+      if (dmg > 1 && dmg !== 99) {
+        const top = dmg;
+        dmg = g.random(1, dmg);
+        rolled(g, { sides: sidesFor(top) ?? 30, value: dmg, foe: onMonsterSide(g, attacker), what: 'blow', at: target });
+      }
     }
   }
   if (dmg === 99) return 99;
   const tc = g.combat[target];
   const def = tc.flags & CF.Monster ? enemy(g, tc.who).def : memberDefence(g, tc.who);
-  return def !== 0 ? dmg - g.random(1, def) : dmg;
+  if (def === 0) return dmg;
+  const soak = g.random(1, def);
+  rolled(g, { sides: sidesFor(def) ?? 30, value: soak, foe: onMonsterSide(g, target), what: 'armour', at: target });
+  return dmg - soak;
 }
 
 /** A fight begun: its allowance of creatures it can breed (mayBreed), full. */
@@ -1151,9 +1216,14 @@ export function addExp(g: Game, m: number, n: number): void {
 export async function strike(g: Game, target: number, attacker: number): Promise<void> {
   const s = g.s;
   const byMonster = (g.combat[attacker].flags & CF.Player) === 0;
-  if (byMonster && enemyFlags(g, g.combat[attacker].who) & (EF.Poison200 | EF.Poison4) && g.random(0, 3) !== 0) {
-    await poison(g, target, attacker);
-    return;
+  if (byMonster && enemyFlags(g, g.combat[attacker].who) & (EF.Poison200 | EF.Poison4)) {
+    const r = g.random(0, 3);
+    rolled(g, { sides: 4, value: r + 1, foe: true, what: 'chance', at: target });
+    if (r !== 0) {
+      await throwDice(g);
+      await poison(g, target, attacker);
+      return;
+    }
   }
   if (byMonster && g.combat[attacker].who === 0x1c && (g.combat[target].flags & CF.Asleep) === 0) {
     putToSleep(g, target);
@@ -1165,6 +1235,7 @@ export async function strike(g: Game, target: number, attacker: number): Promise
   }
   if (s.d5890 === 0 || s.weapon !== 51) {
     const dmg = damageRoll(g, attacker, target);
+    await throwDice(g);
     if (dmg < 0 && g.combat[target].flags & CF.Player) {
       s.d58a2 = 0x20;
       return;
@@ -1638,7 +1709,9 @@ async function rangedAttack(g: Game, i: number, weapon: number, missile: number)
   if (target > -1) {
     a.b7 = target;
     spent = spendAmmo(g, weapon, d) ?? spent;
-    victim = await missileAt(g, i, s.crossX, s.crossY, hitRoll(g, target, i, -s.d588f, weapon), missile);
+    const hit = hitRoll(g, target, i, -s.d588f, weapon);
+    await throwDice(g);
+    victim = await missileAt(g, i, s.crossX, s.crossY, hit, missile);
   } else {
     victim = await missileAt(g, i, s.crossX, s.crossY, true, missile);
   }
@@ -1669,7 +1742,9 @@ export async function melee(g: Game, i: number, target: number, weapon: number):
   else if (!g.soundOff) await swing();
   // The blow's result on a line of its own - no empty line under the aim, which ended its line already.
   if (g.text.win.x !== 0) g.printChar('\n');
-  if (hitRoll(g, target, i, -g.s.d588f, weapon)) {
+  const hit = hitRoll(g, target, i, -g.s.d588f, weapon);
+  await throwDice(g);
+  if (hit) {
     await hitFlash(g, target);
     await strike(g, target, i);
     await report(g, target, i);
@@ -2022,6 +2097,27 @@ export function snapTargets(g: Game, i: number): number[] {
     if (reached.length) return nearestFirst(g, i, reached);
   }
   return [];
+}
+
+/** The hand member combatant `i` strikes foe `j` with (as snapTargets finds it): its weapon, or 0xff bare-handed. */
+export function weaponFor(g: Game, i: number, j: number): number {
+  const c = g.combat[i];
+  const hands = [0, 2, 3].map((h) => g.s.members[c.who].equips[h]).filter((w) => strikes(g, w));
+  return hands.find((w) => reachesFoe(g, i, w, j, false)) ?? 0xff;
+}
+
+/** The foes member combatant `i` could strike from (x, y), a step away (tactics: a walk, then a blow). */
+export function targetsFrom(g: Game, i: number, x: number, y: number): number[] {
+  const c = g.combat[i];
+  const [ox, oy] = [c.x, c.y];
+  c.x = x;
+  c.y = y;
+  try {
+    return snapTargets(g, i);
+  } finally {
+    c.x = ox;
+    c.y = oy;
+  }
 }
 
 /**
@@ -2734,8 +2830,9 @@ function armedWith(g: Game, weapon: number, list: string[]): boolean {
 }
 
 /** COMBAT_063e: a member's turn: the command. */
-async function playerTurn(g: Game): Promise<void> {
+async function playerTurn(g: Game): Promise<boolean> {
   const s = g.s;
+  const t = g.tactics;
   const c = g.combat[s.combatTurn];
   s.x = c.x;
   s.y = c.y;
@@ -2744,14 +2841,14 @@ async function playerTurn(g: Game): Promise<void> {
     // The development build's auto kill (cheats.ts; devMode.ts): the fight is over before the party lifts a hand.
     const { slayAll } = await import('./cheats.ts');
     if ((await slayAll(g)) > 0) {
-      turnEnds(g);
-      return;
+      if (!t.on) turnEnds(g);
+      return true;
     }
   }
   let key = 0xff;
   if (s.activeMember !== 0xff && ((c.flags & CF.Player) === 0 || s.activeMember !== who)) {
-    turnEnds(g);
-    return;
+    if (!t.on) turnEnds(g);
+    return true;
   }
   const m = s.members[who];
   if (c.flags & CF.Player) {
@@ -2765,6 +2862,7 @@ async function playerTurn(g: Game): Promise<void> {
     s.activeMember = 0xff;
     g.vitalsDirty = 1;
     await monsterTurn(g);
+    return true;
   } else {
     if (c.flags & CF.Player) markTurn(g, who, true);
     if (g.vitalsDirty !== 0) {
@@ -2813,6 +2911,10 @@ async function playerTurn(g: Game): Promise<void> {
           done = true;
         } else {
           key = await getCommandKey(g, 'combat');
+          // Tactical turns: E ends the turn with Classic input (1988's E has nothing to enter in a fight; a keyboard read as
+          // a controller has E for Cast), Backspace takes back a step.
+          if (t.on && key === 0x45 && g.options.input !== 'controller') key = END_TURN;
+          if (t.on && key === K.Backspace) key = UNDO_ACTION;
           g.cancelled = false;
           done = true;
           again = false;
@@ -2905,6 +3007,30 @@ async function playerTurn(g: Game): Promise<void> {
             case K.Space:
               g.text.moving = true; // passed again, it folds with a count as a move does (text.ts)
               g.say(0x6e60); // "Pass\n"
+              break;
+            case END_TURN: {
+              // The turn's actions left, passed: asked first (tactics.ts).
+              if (!t.on) {
+                done = false;
+                break;
+              }
+              const { confirm } = await import('./menu.ts');
+              const name = s.members[who]?.name.trim() ?? '';
+              if (await confirm(g, `End this turn? ${name} still has ${t.left} action${t.left === 1 ? '' : 's'}.`)) {
+                t.endAsked = true;
+                g.say(0x6e60); // "Pass\n"
+              } else done = false;
+              updateFrame(g);
+              break;
+            }
+            case UNDO_ACTION:
+              if (t.on && t.undo) {
+                t.undoAsked = true;
+                g.print('Undone\n');
+                return false;
+              }
+              g.print(t.on ? 'Dice are final!\n' : 'What?\n');
+              done = false;
               break;
             case 0x30:
               s.activeMember = 0xff;
@@ -3003,14 +3129,93 @@ async function playerTurn(g: Game): Promise<void> {
     if (c.flags & CF.Player) markTurn(g, c.who, false);
   }
   if (key < 0x30 || key > 0x36) {
-    turnEnds(g);
+    // A turn's end comes once, after its last action (tactical turns: takeTurn).
+    if (!t.on) turnEnds(g);
     updateFrame(g);
     checkMirror(g);
+    return true;
   }
+  return false;
+}
+
+/**
+ * A fighter's turn: one action, as in 1988 - or with tactical turns (tactics.ts), two, one after the other, the same
+ * fighter's: a step, a blow, a spell, a pass, each one. The turn ends early where the fight does, where the fighter
+ * falls, sleeps, leaves the field or is swallowed, or where End Turn is pressed; Undo puts back the turn's last action
+ * if it drew no number (a step: dice are final). What a square does to whoever stands on it, a charm shaken off, are
+ * the turn's, once, after (combatLoop), as ever.
+ */
+async function takeTurn(g: Game): Promise<void> {
+  const s = g.s;
+  const t = g.tactics;
+  const i = s.combatTurn;
+  // A field won is a field to loot, not a fight: a turn there is 1988's one action.
+  if (!t.on || s.battleWon !== 0) {
+    if (onMonsterSide(g, i)) await monsterTurn(g);
+    else await playerTurn(g);
+    return;
+  }
+  t.turn = i;
+  t.left = t.max;
+  t.undo = null;
+  t.endAsked = false;
+  let acted = false;
+  try {
+    while (t.left > 0) {
+      const rolls = t.rolls;
+      const before = snapshot(g, t.left);
+      const member = !onMonsterSide(g, i);
+      g.drawCombatMarks?.();
+      const spent = member ? await playerTurn(g) : (await monsterTurn(g), true);
+      if (t.undoAsked) {
+        t.undoAsked = false;
+        const back = t.undo;
+        t.undo = null;
+        if (back) {
+          putBack(g, back);
+          t.left = back.left;
+          g.viewDirty = 1;
+          updateFrame(g);
+          drawVitals(g);
+        }
+        continue;
+      }
+      if (!spent) continue;
+      acted = true;
+      t.left--;
+      // A member's action that rolled no dice - a step - can be taken back while the turn lasts: dice are final.
+      t.undo = member && t.rolls === rolls && t.left > 0 ? before : null;
+      if (t.endAsked || t.left === 0) break;
+      countSides(g);
+      if (s.dx === 0 || s.dy === 0) break;
+      const c = g.combat[i];
+      if ((c.flags & (CF.Player | CF.Monster)) === 0 || c.flags & (CF.Dead | CF.Asleep | CF.F4) || !inArena(c.x, c.y)) break;
+      if (c.flags & CF.Player && s.members[c.who].status === Status.Dead) break;
+      if (s.activeMember !== 0xff && member && s.activeMember !== c.who) break;
+    }
+  } finally {
+    t.turn = -1;
+    t.left = 0;
+    t.undo = null;
+    g.drawCombatMarks?.();
+  }
+  // A member's turn's end, once (combat.ts turnEnds: the ring, the fields, the protection's count), as 1988's.
+  if (acted && !onMonsterSide(g, i) && g.combat[i].flags & CF.Player) turnEnds(g);
 }
 
 /** COMBAT_0b94_MainLoop: turns by each combatant's timer until one side is gone; true if the battle was lost. */
 export async function combatLoop(g: Game): Promise<boolean> {
+  const t = g.tactics;
+  t.on = g.options.tacticalTurns || t.series !== null;
+  t.dice = [];
+  try {
+    return await fightLoop(g);
+  } finally {
+    t.on = false;
+  }
+}
+
+async function fightLoop(g: Game): Promise<boolean> {
   const s = g.s;
   let lost = true;
   s.exitDir = 0;
@@ -3045,8 +3250,7 @@ export async function combatLoop(g: Game): Promise<boolean> {
         passTime(g, 1);
       }
       s.blink = 1;
-      if (onMonsterSide(g, s.combatTurn)) await monsterTurn(g);
-      else await playerTurn(g);
+      await takeTurn(g);
       s.d58a8[s.combatTurn] = 0xff;
       if (easedRules(g)) await shakeCharm(g, s.combatTurn);
       await castOut(g);
@@ -3113,6 +3317,47 @@ async function victoryTune(g: Game): Promise<void> {
 function loadArena(g: Game, n: number): void {
   g.combatMap.fill(0);
   g.combatMap.set(g.data.files.get('BRIT.CBT').subarray(n * 0x160, n * 0x160 + 0x160));
+}
+
+/**
+ * A fight of the tactical series (tactics.ts): arena `n` of BRIT.CBT, the party in its places and the creatures `kinds`
+ * in the arena's own, as prepareCombat sets them out, fought to its end as specialMap fights one. True if it was won.
+ */
+export async function seriesFight(g: Game, n: number, kinds: number[]): Promise<boolean> {
+  const s = g.s;
+  loadArena(g, n);
+  s.combatFlags = 0;
+  const x = s.x;
+  const y = s.y;
+  const level = s.level;
+  s.savedMapId = s.mapId;
+  s.mapId = 0xff;
+  g.charmedBy.clear();
+  newSpawns(g);
+  g.autoProgress = Infinity;
+  g.autoIdle = 0;
+  g.autoHeld = false;
+  g.autoSwitchedAt = '';
+  g.savedActorBytes.set(s.b.subarray(0x5c5a - 0x55a6, 0x5c5a - 0x55a6 + 0x100));
+  g.bumped.clear();
+  s.exitDir = 0;
+  await placeParty(g);
+  g.say(0xa438); // "*** CONFLICT ***\n"
+  void cue(g, 'CombatStart');
+  const mx = [...g.combatMap.subarray(6 * 32 + 11, 6 * 32 + 27)];
+  const my = [...g.combatMap.subarray(7 * 32 + 11, 7 * 32 + 27)];
+  kinds.slice(0, 16).forEach((k, i) => placeCombatant(g, k, 0, mx[i], my[i], s.level));
+  updateFrame(g);
+  s.combatTurn = s.activeMember = 0xff;
+  s.battleWon = 0;
+  g.cheatedFight = false;
+  await combatLoop(g);
+  s.x = x;
+  s.y = y;
+  s.level = level;
+  s.mapId = s.savedMapId;
+  g.viewDirty = 1;
+  return s.battleWon !== 0 && s.members.slice(0, s.partySize).some((m) => m.status !== Status.Dead);
 }
 
 /** Arena `n` against actor `foe` and back, as attackCombat fights it but with the arena given (devStarts.ts). */

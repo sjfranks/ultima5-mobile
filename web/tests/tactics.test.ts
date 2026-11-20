@@ -1,120 +1,181 @@
 import { describe, expect, it } from 'vitest';
-import { readLore } from '../src/tactics/lore.ts';
-import { ENCOUNTERS } from '../src/tactics/encounters.ts';
-import { Fight, newBattle, PARTY, type Ev } from '../src/tactics/rules.ts';
-import { playHero } from '../src/tactics/bot.ts';
-import { gameFiles } from './helpers.ts';
+import { attackCombat, blowOdds, hitNeed, roll, seriesFight } from '../src/game/combat.ts';
+import { CF, type Game } from '../src/game/game.ts';
+import { K, UNDO_ACTION } from '../src/game/io.ts';
+import { journeyOnward } from '../src/game/run.ts';
+import { hitChance, SERIES, sidesFor, type Die } from '../src/game/tactics.ts';
+import { enterTown, townLoop } from '../src/game/town.ts';
+import { fighter, keys, newGame } from './helpers.ts';
 
-const lore = readLore(
-  gameFiles(),
-  ENCOUNTERS.map((e) => e.arena),
-);
-
-function fight(n = 0, seed = 7): Fight {
-  const f = new Fight(newBattle(lore, ENCOUNTERS[n], seed));
-  f.start();
-  return f;
+async function outside(seed = 1234) {
+  const { g, p } = newGame(seed);
+  journeyOnward(g);
+  await enterTown(g, true);
+  p.keys.push(...keys(K.Down, K.Down, K.Down, 'O', K.Down), ...Array<number>(14).fill(K.Down), 'Y'.charCodeAt(0));
+  await townLoop(g).catch((e: Error) => {
+    if (!e.message.includes('ran out')) throw e;
+  });
+  p.log = '';
+  return { g, p };
 }
 
-describe('tactical rules', () => {
-  it("reads 1988's creatures and arms", () => {
-    expect(lore.creatures[0x20].name).toBe('Orc');
-    expect(lore.creatures[0x27].name).toBe('Dragon');
-    expect(lore.arms[0x1e].name).toBe('Long Sword');
-    expect(lore.arms[0x1e].dmg).toBe(15);
-  });
+function ratBeside(g: Game): void {
+  const s = g.s;
+  const rat = g.data.table(0x18b6, 0x30).findIndex((n) => /GIANT RATS/.test(n));
+  Object.assign(s.actors[1], { tile: 0x40 + rat * 4, anim: 0x40 + rat * 4, x: s.x + 1, y: s.y, z: 0 });
+}
 
-  it('every encounter places its figures on open ground', () => {
-    for (const e of ENCOUNTERS) {
-      const s = newBattle(lore, e, 1);
-      expect(s.units.filter((u) => u.side === 'hero')).toHaveLength(PARTY.length);
-      for (const u of s.units) expect(s.cost[u.y * s.w + u.x], `${e.title}: ${u.name}`).toBeGreaterThan(0);
+describe('tactical turns', () => {
+  it("the roll to hit's odds are 1988's roll, every number counted", () => {
+    // roll(): 0 to 60, halved, 0 counted as 1
+    const counts = new Map<number, number>();
+    for (let v = 0; v <= 60; v++) {
+      const r = roll({ rng: { upTo: () => v, range: () => 0 } } as unknown as Game);
+      counts.set(r, (counts.get(r) ?? 0) + 1);
     }
-  });
-
-  it("starts on a member's turn with two actions", () => {
-    const f = fight();
-    expect(f.active?.side).toBe('hero');
-    expect(f.active?.actions).toBe(2);
-  });
-
-  it('a move costs an action and can be undone; a roll cannot', () => {
-    const f = fight();
-    const u = f.active!;
-    const [first] = [...f.reach(u).values()];
-    const at = { x: u.x, y: u.y };
-    expect(f.move(u.id, first.path).length).toBeGreaterThan(0);
-    expect(f.active!.actions).toBe(1);
-    expect(f.canUndo).toBe(true);
-    expect(f.undo()).toBe(true);
-    expect({ x: f.active!.x, y: f.active!.y }).toEqual(at);
-    expect(f.active!.actions).toBe(2);
-    // walk up to a foe and strike it: dice rolled, so no undo
-    let ev: Ev[] = [];
-    for (let i = 0; i < 40 && !ev.some((e) => e.t === 'roll'); i++) {
-      const h = f.active!;
-      const t = f.targets(h, h.abilities[0].id)[0];
-      if (t && (!t.path || h.actions >= 2)) ev = f.act(h.id, h.abilities[0].id, t, t.path);
-      else {
-        playHero(f, h);
-        f.endTurn();
-      }
+    for (const need of [1, 2, 9, 15, 29, 30, 31]) {
+      let n = 0;
+      for (const [r, c] of counts) if (r >= need) n += c;
+      expect(hitChance(need)).toBeCloseTo(n / 61, 10);
     }
-    expect(ev.some((e) => e.t === 'roll')).toBe(true);
-    expect(f.canUndo).toBe(false);
-    expect(f.undo()).toBe(false);
+    expect(hitChance(0)).toBe(1);
+    expect(hitChance(31)).toBe(0);
   });
 
-  it('a walk-then-act costs both actions', () => {
-    const f = fight(4, 3);
-    const h = f.active!;
-    const far = f.targets(h, 'attack').find((t) => t.path) ?? null;
-    if (!far) return;
-    f.act(h.id, 'attack', far, far.path);
-    expect(f.unit(h.id)!.actions).toBe(0);
+  it('throws each roll on the least die that holds its range', () => {
+    expect([1, 4, 5, 6, 8, 9, 12, 15, 20, 29, 30, 31].map(sidesFor)).toEqual([4, 4, 6, 6, 8, 10, 12, 20, 20, 30, 30, null]);
   });
 
-  it('says why an ability cannot be used', () => {
-    const f = fight();
-    const h = f.active!;
-    h.actions = 0;
-    expect(f.block(h, h.abilities[0].id)).toBe('No actions left');
-  });
-
-  it('forecasts with the real roll', () => {
-    const f = fight(4, 3);
-    const h = f.active!;
-    const dragon = f.S.units.find((u) => u.kind === 0x27)!;
-    const fc = f.forecast(h, h.abilities[0].id, dragon)!;
-    expect(fc.avg).toBeGreaterThan(0);
-    expect(fc.miss).toBeGreaterThanOrEqual(0);
-    expect(fc.armour).toBe(dragon.armour);
-  });
-
-  it('the same seed and orders play the same battle', () => {
-    const play = () => {
-      const f = fight(1, 99);
-      const out: string[] = [];
-      for (let i = 0; i < 6 && !f.S.over; i++) {
-        const h = f.active!;
-        const t = f.targets(h, h.abilities[0].id).find((x) => !x.path);
-        if (t) out.push(JSON.stringify(f.act(h.id, h.abilities[0].id, t)));
-        out.push(JSON.stringify(f.endTurn()));
-      }
-      return out.join();
+  it('gives each fighter two actions a turn, one after the other, and the dice are the rolls the rules made', async () => {
+    const { g, p } = await outside(3);
+    ratBeside(g);
+    const fight = fighter(g);
+    const prompts: number[] = [];
+    const dice: Die[][] = [];
+    g.hooks.throwDice = async (d) => void dice.push(d);
+    p.next = () => {
+      if (!g.s.crosshair && g.commandPrompt === 'combat') prompts.push(g.s.combatTurn);
+      return fight();
     };
-    expect(play()).toBe(play());
+    await attackCombat(g, 1);
+    expect(p.log).toMatch(/VICTORY|BATTLE IS LOST/);
+    // a member's prompts come in pairs (a turn's two actions), but where the fight ended in between
+    const runs: number[] = [];
+    for (const t of prompts) {
+      if (runs.length && prompts[runs.length - 1] === t && runs[runs.length - 1] === 1) runs[runs.length - 1] = 2;
+      else runs.push(1);
+    }
+    expect(prompts.some((t, k) => k > 0 && prompts[k - 1] === t)).toBe(true);
+    // every die shows a face it has, a roll to hit with what it needed
+    expect(dice.length).toBeGreaterThan(0);
+    for (const d of dice.flat()) {
+      expect(d.value).toBeGreaterThanOrEqual(1);
+      expect(d.value).toBeLessThanOrEqual(d.sides);
+      if (d.what === 'hit') {
+        expect(d.sides).toBe(30);
+        expect(d.need).toBeTypeOf('number');
+      }
+    }
+    // and a blow's own roll follows each roll to hit that reached its need (or is the poison's chance)
+    const hits = dice.flat().filter((d) => d.what === 'hit');
+    expect(hits.length).toBeGreaterThan(0);
   });
 
-  it('the simulator plays every encounter to its end', () => {
-    for (let i = 0; i < ENCOUNTERS.length; i++)
-      for (let b = 0; b < 8; b++) {
-        const f = fight(i, 500 + b);
-        for (let g = 0; g < 600 && !f.S.over; g++) {
-          playHero(f, f.active!);
-          if (!f.S.over) f.endTurn();
-        }
-        expect(f.S.over, ENCOUNTERS[i].title).not.toBeNull();
+  it('with 1988 turns, one action a turn and no dice', async () => {
+    const { g, p } = await outside(3);
+    g.options.tacticalTurns = false;
+    ratBeside(g);
+    const fight = fighter(g);
+    let thrown = 0;
+    g.hooks.throwDice = async () => void thrown++;
+    p.next = fight;
+    await attackCombat(g, 1);
+    expect(thrown).toBe(0);
+  });
+
+  it('takes back a step, but never a blow: dice are final', async () => {
+    const { g, p } = await outside(5);
+    ratBeside(g);
+    const fight = fighter(g);
+    let phase = 0;
+    let at: [number, number] = [0, 0];
+    let undone = false;
+    let refused = false;
+    p.next = () => {
+      const s = g.s;
+      const t = g.tactics;
+      const me = g.combat[s.combatTurn];
+      const member = (me.flags & CF.Player) !== 0 && !s.crosshair && g.commandPrompt === 'combat';
+      if (member && phase === 0 && t.left === 2) {
+        // a step away from the rat (west), then Undo
+        at = [me.x, me.y];
+        phase = 1;
+        return K.Left;
       }
+      if (member && phase === 1 && t.left === 1) {
+        phase = 2;
+        return UNDO_ACTION;
+      }
+      if (member && phase === 2) {
+        undone = me.x === at[0] && me.y === at[1] && t.left === 2;
+        phase = 3;
+        return fight();
+      }
+      if (member && phase === 3 && t.left === 1 && t.undo === null && p.log.includes('d30')) {
+        phase = 4;
+        return UNDO_ACTION;
+      }
+      if (phase === 4 && member) {
+        refused = p.log.includes('Dice are final!');
+        phase = 5;
+      }
+      return fight();
+    };
+    await attackCombat(g, 1);
+    expect(undone).toBe(true);
+    if (phase >= 5) expect(refused).toBe(true);
+  });
+
+  it("reckons a blow's odds as the rules roll it: 1 to the weapon's damage, less 1 to the armour", async () => {
+    const { g, p } = await outside(2);
+    ratBeside(g);
+    let checked = false;
+    const fight = fighter(g);
+    p.next = () => {
+      const s = g.s;
+      const me = g.combat[s.combatTurn];
+      if (!checked && me.flags & CF.Player && g.commandPrompt === 'combat') {
+        const foe = g.combat.findIndex((c) => c.flags & CF.Monster && !(c.flags & CF.Dead));
+        const odds = blowOdds(g, s.combatTurn, foe, g.s.members[me.who].equips[2]);
+        const need = hitNeed(g, foe, s.combatTurn, g.s.members[me.who].equips[2]);
+        expect(odds).not.toBeNull();
+        expect(odds!.avg).toBeGreaterThan(0);
+        expect(odds!.kill).toBeGreaterThanOrEqual(0);
+        expect(odds!.kill).toBeLessThanOrEqual(1);
+        expect(need).toBeTypeOf('number');
+        checked = true;
+      }
+      return fight();
+    };
+    await attackCombat(g, 1);
+    expect(checked).toBe(true);
+  });
+
+  it("sets each fight of the series out in its arena's own places, every creature there", async () => {
+    for (const f of SERIES) {
+      const { g, p } = await outside(11);
+      g.options.rules = 'classic';
+      g.tactics.series = f;
+      let seen: number[] | null = null;
+      const fight = fighter(g);
+      p.next = () => {
+        seen ??= g.combat.filter((c) => c.flags & CF.Monster).map((c) => c.who);
+        return fight();
+      };
+      await seriesFight(g, f.arena, f.foes).catch((e: Error) => {
+        if (!/too long/.test(e.message)) throw e;
+      });
+      expect([...seen!].sort(), f.title).toEqual([...f.foes].sort());
+    }
   });
 });

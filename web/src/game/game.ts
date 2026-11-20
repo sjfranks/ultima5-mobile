@@ -17,6 +17,7 @@ import { PathState } from './modernKarma.ts';
 import { Vocabulary } from './words.ts';
 import type { Draw, Platform, Sound } from './io.ts';
 import { type Random, TrueRandom } from './rng.ts';
+import { Tactics, type Die } from './tactics.ts';
 import { Actor, Save } from './save.ts';
 import { TalkState } from './talk.ts';
 import { type Appearance, DEFAULT_APPEARANCE } from './appearance.ts';
@@ -118,6 +119,8 @@ export interface GameHooks {
   update?: UpdateHook;
   /** Leave the game, where it runs as an app that can (ui/platform.ts appQuit); a browser tab has none. */
   quit?: (() => void) | undefined;
+  /** The dice of a tactical turn's roll thrown onto the field, resolved once they have landed (ui/tacticsView.ts). */
+  throwDice?: ((dice: Die[]) => Promise<void>) | undefined;
 }
 
 /** What bump to act remembers of a thing (Game.bumped). */
@@ -129,6 +132,8 @@ export const thingKey = (g: Game, x: number, y: number): string => `${g.s.mapId}
 export class Game {
   s: Save;
   rng: Random = new TrueRandom();
+  /** Tactical turns: two actions a turn, the dice shown (tactics.ts). */
+  readonly tactics = new Tactics();
 
   /** D_6608: the map in memory: four 16x16 chunks of the world, or a settlement level. */
   readonly map = new Uint8Array(1024);

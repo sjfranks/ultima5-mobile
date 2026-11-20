@@ -1778,6 +1778,17 @@ export async function pauseMenu(g: Game, midCommand = false): Promise<number> {
           },
         },
         {
+          // The tactical fights (src/tactics, tactics.html): Britannia's creatures on its own arenas, as a board game
+          // with dice, five fights of their own; the game here is left as it was last saved.
+          label: 'Tactical fights',
+          note: 'Five fights as a board game with dice. Play since the last save is lost: save first.',
+          act: async () => {
+            if (!(await confirm(g, 'Leave for the tactical fights? Play since the last save is lost.'))) return;
+            location.href = `${import.meta.env.BASE_URL}tactics.html`;
+            return 0;
+          },
+        },
+        {
           label: 'Save game',
           key: SAVE_NOW,
           enabled: g.s.mapId !== 0xff && !midCommand,

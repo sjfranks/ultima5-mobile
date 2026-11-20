@@ -377,6 +377,59 @@ has the whole list; the highlights:
   [Fixing the 1988 game](docs/fixing-1988.md) tells how they were found,
   down to the original Apple II disks.
 
+## Tactical fights
+
+`tactics.html` (and **Tactical fights** in the Pause menu) plays five fights
+as a board game with dice: the Avatar, Shamino, Iolo and Jaana against
+Ultima V's own creatures, on its own arenas, drawn in the look's own tiles.
+Everything is read from the player's copy, as the game is: the creatures'
+table (strength, dexterity, intelligence, defence, attack, hit points and
+their flags), the arms' damage and defence, which tiles block, and the
+arenas of BRIT.CBT and DUNGEON.CBT.
+
+1. **Orcs on the Road** (the grass arena): six orcs and two headless.
+2. **The Fens** (the swamp, an ambush): rats, spiders, pythons and slimes.
+3. **Pirates Ashore** (the pirates' arena): a crew down the gangplanks.
+4. **The Halls of Deceit** (a dungeon room): skeletons, ghosts, a gazer.
+5. **The Dragon's Pass** (the hills): a dragon, two trolls and an ettin.
+
+- **Turns:** initiative is rolled once; the sides take turns, one figure at
+  a time. Every figure has two actions: a move is one, each blow or spell
+  is one; a walk then a blow is both. At no actions left the turn passes by
+  itself; End Turn asks first while actions are left.
+- **1988's numbers, as dice:** a blow rolls the weapon's damage as dice
+  (Long Sword 15, two d8; Halberd 30, three d10, reaching two squares) or
+  the creature's attack; all ones misses; a top face is a crit that
+  explodes and cuts through armour; missiles never explode; every blow
+  after the first in a turn rolls with disadvantage, as does one against a
+  creature far nimbler than the attacker (1988's dexterity to-hit). Armour
+  takes a fixed third of the defence off what lands. Undead take half of
+  every blow and never sleep; slimes divide; rats, spiders and pythons
+  poison; gremlins steal reagents; gazers charm; mages, reapers and daemons
+  hurl bolts; ettins throw boulders; dragons breathe fire over three
+  squares by three. The creatures' hit points are doubled on Normal (1.5
+  on Easy, 2.5 on Hard): 1988's table fells most of them with one blow.
+- **The spells** are 1988's: Grav Por, Mani (which raises a fallen
+  member), An Nox, In Zu, In Flam Grav (a wall of fire, turned Across or
+  Down), In Flam Hur and In Sanct, each with its reagents for the fight.
+- **Touch first:** a member's first ability is armed at once, so a tap on
+  a blue square walks and a tap on a red foe strikes; drag a figure to draw
+  its way square by square (back over it trims it), onto a foe to walk and
+  strike. A foe in reach only after a walk asks Confirm? first. Hover with
+  a mouse to see the way and the odds; pinch or wheel to zoom, drag the
+  board to pan.
+- **The dice** are thrown onto the field beside the target, real solids
+  (d4 to d20, blue for the party, red for the creatures) that tumble and
+  bounce to rest on the face the rules rolled. The rules roll first,
+  seeded; the view only shows it. Undo (Z, or the arrow at the top) takes
+  back what rolled no dice; dice are final.
+- `npm run tactics:sim 300` plays every fight headless with a party bot
+  against the creatures' own minds (about 100, 100, 94, 84 and 76% won);
+  `npm run tactics:e2e` taps and drags through a fight in Chromium (the
+  dev server running, `npx vite --port 5173`); `npm run tactics:demo
+  out.html` writes the fights as one page from your own copy, for yourself
+  alone (it carries the game's data: never commit it).
+
 ## Design notes
 
 The port's aim is the 1988 game, played the way a modern player expects,

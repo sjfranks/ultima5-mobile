@@ -21,7 +21,10 @@
     "apple2": "node tools/art/apple2.ts",
     "known": "node --import ./tools/node-ts.mjs tools/install/known.ts",
     "music": "node --import ./tools/node-ts.mjs tools/music/render.ts",
-    "sfx": "node --import ./tools/node-ts.mjs tools/sfx/render.ts"
+    "sfx": "node --import ./tools/node-ts.mjs tools/sfx/render.ts",
+    "tactics:sim": "node --import ./tools/node-ts.mjs tools/tactics-sim.ts",
+    "tactics:e2e": "node tools/tactics-e2e.cjs",
+    "tactics:demo": "node --import ./tools/node-ts.mjs tools/tactics-demo.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

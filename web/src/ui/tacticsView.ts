@@ -673,8 +673,25 @@ export function turnReach(g: Game, i: number): number {
  * shortest way there as they go. Empty where there is no way.
  */
 export function walkToward(g: Game, i: number, x: number, y: number): { x: number; y: number }[] {
-  const all = pathOf(g, i, x, y, 30);
-  return all.slice(0, turnReach(g, i));
+  const far = reachOf(g, i, 30);
+  // where it can be stood on: the way there; else (a creature out of reach, water, a wall) the way to the open square
+  // nearest it - the turn walks as far along either as its moves go
+  let goal = far.has(y * 16 + x) ? { x, y } : null;
+  if (!goal) {
+    let best = Infinity;
+    for (const [k, d] of far) {
+      const q = { x: k & 15, y: k >> 4 };
+      const off = (q.x - x) ** 2 + (q.y - y) ** 2;
+      if (off < best || (off === best && goal && d < (far.get(goal.y * 16 + goal.x) ?? 0))) {
+        best = off;
+        goal = q;
+      }
+    }
+    const c = g.combat[i];
+    // nowhere nearer than where the member stands: no walk
+    if (!goal || best >= (c.x - x) ** 2 + (c.y - y) ** 2) return [];
+  }
+  return pathOf(g, i, goal.x, goal.y, 30).slice(0, turnReach(g, i));
 }
 
 export function installTacticsView(g: Game, screen: Screen): TacticsView {

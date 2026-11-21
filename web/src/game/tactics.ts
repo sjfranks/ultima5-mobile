@@ -28,8 +28,9 @@ export interface Die {
   what: 'hit' | 'blow' | 'armour' | 'chance';
   /** The roll to hit: what it needed to reach. */
   need?: number;
-  /** Where it lands: beside this combatant. */
+  /** Whom it is for (the target), and who rolled it (the attacker). */
   at: number;
+  by: number;
 }
 
 /**

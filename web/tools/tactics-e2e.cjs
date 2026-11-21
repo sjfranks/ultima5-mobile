@@ -114,14 +114,21 @@ async function game(browser, url, touch = true) {
   check(reach.some((r) => r.n === 1) && reach.some((r) => r.n === 2), `its reach marks squares a step and two steps off (${reach.length})`);
   await shot('1-turn');
 
-  // a square a step off: marked at the first tap, walked to at the second
+  // the member walking to (x, y): waited on till they stand there, or the walk is over
+  const arrive = async (i, x, y) => {
+    for (let k = 0; k < 60; k++) {
+      const at = await view(([i]) => [window.u5.g.combat[i].x, window.u5.g.combat[i].y], i);
+      if (at[0] === x && at[1] === y) break;
+      await p.waitForTimeout(100);
+    }
+    return ready();
+  };
+
+  // a square a step off: walked to at the first tap
   const one = reach.find((r) => r.n === 1);
   await tap(one.x, one.y);
-  const marked = await view(() => window.u5.screen.wayShown?.()?.kind ?? null);
-  check(marked === 'walk', 'the first tap marks the way (Fight taps: Confirm)');
-  await tap(one.x, one.y);
-  let after = await ready();
-  check(after.x === one.x && after.y === one.y && after.left === 1, 'the second tap walks there, one action spent');
+  let after = await arrive(s.i, one.x, one.y);
+  check(after.x === one.x && after.y === one.y && after.left === 1, 'a tap walks there at once, one action spent');
   check(after.undo, 'a step can be taken back');
   await shot('2-stepped');
 
@@ -139,8 +146,7 @@ async function game(browser, url, touch = true) {
   }, s.i);
   check(far && far.d >= 2, `a move walks ${far?.d} squares for dexterity ${far?.dex}`);
   await tap(far.x, far.y);
-  await tap(far.x, far.y);
-  after = await ready();
+  after = await arrive(s.i, far.x, far.y);
   check(
     after && after.i === s.i && after.x === far.x && after.y === far.y && after.left === 1,
     'the whole move is walked for one action, one left',
@@ -148,6 +154,7 @@ async function game(browser, url, touch = true) {
 
   // members come and go till one has a foe within a walk; it is marked, its odds shown, then walked to and struck
   let struck = false;
+  let walkedFar = false;
   let refused = false;
   let ended = false;
   for (let turns = 0; turns < 60 && !(struck && refused && ended); turns++) {
@@ -165,6 +172,32 @@ async function game(browser, url, touch = true) {
     );
     const far = targets.find((t) => t.step);
     const near = targets.find((t) => !t.step);
+    // past one move: one tap walks the whole way, both moves
+    if (!walkedFar && s.left === 2) {
+      const goal = await view(([i]) => {
+        const v = window.u5tactics;
+        const r = v.reach(i);
+        const most = Math.max(...r.values());
+        for (let y = 0; y < 11; y++)
+          for (let x = 0; x < 11; x++) {
+            const w = v.walk(i, x, y);
+            if (w.length > most && w[w.length - 1].x === x && w[w.length - 1].y === y) return { x, y, n: w.length };
+          }
+        return null;
+      }, s.i);
+      if (goal) {
+        await tap(goal.x, goal.y);
+        for (let k = 0; k < 60; k++) {
+          const at = await view(([i]) => [window.u5.g.combat[i].x, window.u5.g.combat[i].y], s.i);
+          if (at[0] === goal.x && at[1] === goal.y) break;
+          await p.waitForTimeout(100);
+        }
+        const at = await view(([i]) => [window.u5.g.combat[i].x, window.u5.g.combat[i].y], s.i);
+        check(at[0] === goal.x && at[1] === goal.y, `one tap past a move walks the whole way (${goal.n} squares, both moves)`);
+        walkedFar = true;
+        continue;
+      }
+    }
     if (!struck && far && s.left === 2) {
       await tap(far.x, far.y);
       const way = await view(() => window.u5.screen.wayShown?.() ?? null);
@@ -276,6 +309,7 @@ async function game(browser, url, touch = true) {
     }
     check(cast, 'a spell was aimed and cast');
   }
+  check(walkedFar, 'a member walked past one move with one tap');
   check(struck, 'a member walked to a foe and struck it');
   check(refused, 'a member was refused an undo after a roll');
   check(ended, 'a member ended their turn');

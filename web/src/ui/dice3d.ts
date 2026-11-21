@@ -285,6 +285,14 @@ export function faceUp(s: Solid, m: M3): number {
   return s.values[at];
 }
 
+/** The spin about the vertical that turns `value`'s number upright to the eye, once its face is up. */
+export function uprightSpin(s: Solid, value: number): number {
+  const i = Math.max(0, s.values.indexOf(value));
+  const up = apply(align(s.normals[i], [0, 0, 1]), s.ups[i]);
+  // the screen's up is the board's north (-y)
+  return Math.atan2(-1, 0) - Math.atan2(up[1], up[0]);
+}
+
 /** The rotation that rests a die with `value` up, spun `spin` about the vertical. */
 export function restingWith(s: Solid, value: number, spin: number): M3 {
   const i = Math.max(0, s.values.indexOf(value));
@@ -307,7 +315,17 @@ const shade = (c: [number, number, number], k: number, spec: number): string =>
  * Draw a die into `ctx` (a small canvas: the grain), centred at (cx, cy), `r` pixels from centre to corner, turned by
  * `m`. Faces away from the eye are not drawn: a die is convex, so the rest never overlap.
  */
-export function drawDie(ctx: CanvasRenderingContext2D, s: Solid, m: M3, cx: number, cy: number, r: number, look: DieLook): void {
+export function drawDie(
+  ctx: CanvasRenderingContext2D,
+  s: Solid,
+  m: M3,
+  cx: number,
+  cy: number,
+  r: number,
+  look: DieLook,
+  /** Letters `text` centred on (0, 0), its line 32 high (the game's own lettering: ui/tacticsView.ts); else a font's. */
+  print?: (ctx: CanvasRenderingContext2D, text: string, ink: string, edge: string) => void,
+): void {
   const pv = s.verts.map((v) => apply(m, v));
   const scr = pv.map((p) => project(p));
   const faces = s.faces.map((f, i) => ({ f, i, n: apply(m, s.normals[i]) })).filter((x) => dot(x.n, EYE) > 0.02);
@@ -328,34 +346,40 @@ export function drawDie(ctx: CanvasRenderingContext2D, s: Solid, m: M3, cx: numb
     ctx.stroke();
     // the number, printed flat on the face
     const facing = dot(n, EYE);
-    if (facing < 0.5) continue;
+    // the many-sided: only the face turned up is lettered, the rest left plain, as they read on a real die
+    if (facing < (s.sides >= 12 ? 0.82 : 0.5)) continue;
     const c = mul(
       f.reduce((acc, k) => add(acc, pv[k]), [0, 0, 0] as V3),
       1 / f.length,
     );
     const up = apply(m, s.ups[i]);
-    const right = cross(up, n);
+    const right = cross(n, up); // the number's rightward, read from outside the face
     const [px, py] = project(c);
     const [ux, uy] = project(up);
     const [rx, ry] = project(right);
     const v = String(s.values[i]);
     const size =
-      r * (s.sides <= 6 ? 1.1 : s.sides === 8 ? 1.0 : s.sides === 10 ? 0.9 : s.sides === 12 ? 0.8 : 0.66) * (v.length > 1 ? 0.8 : 1);
+      r *
+      (s.sides <= 6 ? 1.0 : s.sides === 8 ? 0.95 : s.sides === 10 ? 0.85 : s.sides === 12 ? 0.75 : s.sides === 20 ? 0.7 : 0.72) *
+      (v.length > 1 ? 0.9 : 1);
     // lettered at 32px and scaled onto the face (a 1px font scaled up draws nothing in some browsers)
     const k = size / 32;
     ctx.save();
     ctx.setTransform(rx * k, ry * k, -ux * k, -uy * k, cx + px * r, cy + py * r);
-    ctx.globalAlpha = Math.min(1, (facing - 0.5) * 4);
-    ctx.font = '32px "U5 Letters", monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const dy = s.sides === 4 ? -5 : 2;
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = look.edge;
-    ctx.lineJoin = 'round';
-    ctx.strokeText(v, 0, dy);
-    ctx.fillStyle = look.ink;
-    ctx.fillText(v, 0, dy);
+    ctx.globalAlpha = Math.min(1, (facing - (s.sides >= 12 ? 0.82 : 0.5)) * 6);
+    if (print) print(ctx, v, look.ink, look.edge);
+    else {
+      ctx.font = '32px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const dy = s.sides === 4 ? -5 : 2;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = look.edge;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(v, 0, dy);
+      ctx.fillStyle = look.ink;
+      ctx.fillText(v, 0, dy);
+    }
     if (v === '6' || v === '9') ctx.fillRect(-9, 15, 18, 3);
     ctx.restore();
   }
@@ -421,7 +445,7 @@ export function newThrow(rnd: () => number, sides: number, value: number, to: [n
     axis,
     turns: 2 + rnd() * 0.8,
     wobbleAxis: norm([rnd() - 0.5, rnd() - 0.5, rnd() - 0.5]),
-    final: restingWith(s, value, rnd() * Math.PI * 2),
+    final: restingWith(s, value, uprightSpin(s, value) + (rnd() - 0.5) * 0.6),
     look: foe ? FOE : FRIEND,
     dropped: false,
     crit: false,

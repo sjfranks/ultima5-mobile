@@ -30,7 +30,8 @@ import {
 } from '../game/combat.ts';
 import { CF, type Game } from '../game/game.ts';
 import { hitChance, stepsFor, walkCost, type Die } from '../game/tactics.ts';
-import { drawDie, FOE, FRIEND, GOLD, newThrow, solid, throwAt, type Throw } from './dice3d.ts';
+import { drawDie, GOLD, newThrow, solid, throwAt, type Throw } from './dice3d.ts';
+import { glyphPixel, readFont } from '../data/font.ts';
 import { HI, TILE_X, TILE_Y } from './framebuffer.ts';
 import type { Screen } from './screen.ts';
 
@@ -39,19 +40,11 @@ const E = HI;
 const SQ = 16 * E;
 
 const CHALK = '#f0ece0';
-/** The reach's marks: a pale blue dot a square, a faint broken line round them; an aim's line, brass. */
-const DOT = 'rgba(170, 205, 255, 0.85)';
-const EDGE = 'rgba(190, 215, 255, 0.55)';
-const AIM_EDGE = 'rgba(214, 170, 96, 0.6)';
-
-interface Shown {
-  dice: (Throw & { die: Die })[];
-  /** When the last landed (ms), for their going. */
-  settled: number;
-}
+/** The reach's mark: a soft pale line round it; an aim's, brass. */
+const EDGE = 'rgba(190, 215, 255, 0.5)';
+const AIM_EDGE = 'rgba(214, 170, 96, 0.5)';
 
 export class TacticsView {
-  private shown: Shown = { dice: [], settled: 0 };
   private dieCanvas = document.createElement('canvas');
   private dieCtx = this.dieCanvas.getContext('2d')!;
   private audio: AudioContext | null = null;
@@ -88,6 +81,11 @@ export class TacticsView {
     return targetsOf(this.g, i);
   }
 
+  /** The walk a tap on (x, y) makes (walkToward). */
+  walk(i: number, x: number, y: number): { x: number; y: number }[] {
+    return walkToward(this.g, i, x, y);
+  }
+
   /** The actions a walk of `d` squares costs member `i` now (game/tactics.ts walkCost). */
   cost(i: number, d: number): number {
     return walkCost(this.g, i, d);
@@ -112,7 +110,7 @@ export class TacticsView {
   private draw(ctx: CanvasRenderingContext2D): void {
     const g = this.g;
     if (g.s.mapId !== 0xff) {
-      this.shown.dice = [];
+      this.tray = null;
       return;
     }
     ctx.imageSmoothingEnabled = false;
@@ -125,7 +123,7 @@ export class TacticsView {
     if (i >= 0 && this.screen.waiting) this.drawTurn(ctx, i);
     const a = this.aiming();
     if (a >= 0 && this.screen.waiting) this.drawAim(ctx, a);
-    this.drawDice(ctx);
+    this.drawTray(ctx);
     ctx.restore();
   }
 
@@ -133,12 +131,7 @@ export class TacticsView {
     const g = this.g;
     const c = g.combat[i];
     const reach = this.reach(i);
-    // the squares this move reaches: a small pale dot on each, and a faint broken line round the whole
-    for (const k of reach.keys()) {
-      const [x, y] = this.at(k & 15, k >> 4);
-      ctx.fillStyle = DOT;
-      ctx.fillRect(x + 7 * E, y + 7 * E, 2 * E, 2 * E);
-    }
+    // the squares this move reaches: one soft line round them, nothing on the squares themselves
     const has = (x: number, y: number): boolean => reach.has(y * 16 + x) || (x === c.x && y === c.y);
     this.edge(ctx, [...reach.keys(), c.y * 16 + c.x], has, EDGE);
     // the foes in reach: corners only - fainter for those a walk away
@@ -256,20 +249,18 @@ export class TacticsView {
   }
 
   /**
-   * A broken line round squares `keys` (y * 16 + x), on their outer edges only: dashes of two pixels of the EGA grain
-   * with two between, along each edge where the next square is not one of them.
+   * A line round squares `keys` (y * 16 + x), a pixel of the EGA grain wide, on their outer edges only: along each edge
+   * where the next square is not one of them.
    */
   private edge(ctx: CanvasRenderingContext2D, keys: number[], has: (x: number, y: number) => boolean, colour: string): void {
     ctx.fillStyle = colour;
     for (const k of keys) {
       const [sx, sy] = [k & 15, k >> 4];
       const [x, y] = this.at(sx, sy);
-      for (let d = 0; d < 16; d += 4) {
-        if (!has(sx, sy - 1)) ctx.fillRect(x + d * E, y, 2 * E, E);
-        if (!has(sx, sy + 1)) ctx.fillRect(x + d * E, y + SQ - E, 2 * E, E);
-        if (!has(sx - 1, sy)) ctx.fillRect(x, y + d * E, E, 2 * E);
-        if (!has(sx + 1, sy)) ctx.fillRect(x + SQ - E, y + d * E, E, 2 * E);
-      }
+      if (!has(sx, sy - 1)) ctx.fillRect(x, y, SQ, E);
+      if (!has(sx, sy + 1)) ctx.fillRect(x, y + SQ - E, SQ, E);
+      if (!has(sx - 1, sy)) ctx.fillRect(x, y, E, SQ);
+      if (!has(sx + 1, sy)) ctx.fillRect(x + SQ - E, y, E, SQ);
     }
   }
 
@@ -294,9 +285,7 @@ export class TacticsView {
   /** A line or two of the game's letters in a black box with the frame's pale edge, over square (x, y). */
   private tag(ctx: CanvasRenderingContext2D, x: number, y: number, line: string, line2: string): void {
     const cell = 8 * E; // a letter's cell, as the game sets its own
-    ctx.font = `${cell}px "U5 Letters", monospace`;
-    ctx.textBaseline = 'top';
-    const w = Math.max(line.length, line2.length) * cell * 0.88 + 2 * E;
+    const w = Math.max(line.length, line2.length) * cell + 2 * E;
     const h = (line2 ? 2 : 1) * cell + 2 * E;
     const [sx, sy] = this.at(x, y);
     let bx = Math.round((sx + SQ / 2 - w / 2) / E) * E;
@@ -311,58 +300,113 @@ export class TacticsView {
     ctx.fillRect(bx - E, by + h, w + 2 * E, E);
     ctx.fillRect(bx - E, by - E, E, h + 2 * E);
     ctx.fillRect(bx + w, by - E, E, h + 2 * E);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(line, bx + E, by + E);
-    if (line2) {
-      ctx.fillStyle = '#ff7060';
-      ctx.fillText(line2, bx + E, by + E + cell);
-    }
+    this.text(ctx, line, bx + E, by + E, cell, '#ffffff');
+    if (line2) this.text(ctx, line2, bx + E, by + E + cell, cell, '#ff7060');
   }
 
-  // --- The dice -------------------------------------------------------------------------
+  // --- The game's own letters ------------------------------------------------------------
+
+  private glyphs = new Map<string, HTMLCanvasElement>();
+  private ibm: ReturnType<typeof readFont> | null = null;
+
+  /** Letter `code` in `colour`: the Modern look's lettering (32 by 32), or the game's own IBM.CH (8 by 8). */
+  private glyph(code: number, colour: string): HTMLCanvasElement {
+    const key = `${code}:${colour}`;
+    let c = this.glyphs.get(key);
+    if (c) return c;
+    c = document.createElement('canvas');
+    const x = c.getContext('2d')!;
+    const fine = this.screen.fb.art.glyph?.(code) ?? null;
+    if (fine) {
+      c.width = c.height = 32;
+      // (sized first: sizing a canvas resets its colour)
+      x.fillStyle = colour;
+      for (let y = 0; y < 32; y++) for (let i = 0; i < 32; i++) if (fine[y * 32 + i]) x.fillRect(i, y, 1, 1);
+    } else {
+      this.ibm ??= readFont(this.g.data.files.get('IBM.CH'));
+      c.width = c.height = 8;
+      x.fillStyle = colour;
+      for (let y = 0; y < 8; y++) for (let i = 0; i < 8; i++) if (glyphPixel(this.ibm, code, i, y)) x.fillRect(i, y, 1, 1);
+    }
+    this.glyphs.set(key, c);
+    return c;
+  }
+
+  /** A line of the game's letters, each `cell` square, from (x, y) - or centred on x; an edge round them where given. */
+  private text(
+    ctx: CanvasRenderingContext2D,
+    str: string,
+    x: number,
+    y: number,
+    cell: number,
+    colour: string,
+    centre = false,
+    edge?: string,
+  ): void {
+    const left = centre ? x - (str.length * cell) / 2 : x;
+    ctx.imageSmoothingEnabled = false;
+    const put = (col: string, ox: number, oy: number): void => {
+      for (let k = 0; k < str.length; k++) {
+        const code = str.charCodeAt(k);
+        if (code === 0x20) continue;
+        ctx.drawImage(this.glyph(code, col), Math.round(left + k * cell + ox), Math.round(y + oy), cell, cell);
+      }
+    };
+    if (edge) {
+      const o = Math.max(1, cell / 16);
+      for (const [dx, dy] of [
+        [-o, 0],
+        [o, 0],
+        [0, -o],
+        [0, o],
+      ])
+        put(edge, dx, dy);
+    }
+    put(colour, 0, 0);
+  }
+
+  // --- The dice tray ------------------------------------------------------------------------
+
+  private tray: Tray | null = null;
 
   private moving(): boolean {
-    const now = performance.now();
-    return (
-      this.shown.dice.length > 0 &&
-      (now < this.shown.settled + 1700 || this.shown.dice.some((d) => d.gone === undefined && now < d.start + d.dur))
-    );
+    return this.tray !== null;
   }
 
-  /** Where dice for combatant `j` land: the first square beside them free of figures, toward the player. */
-  private landing(j: number): { x: number; y: number } {
+  private nameOf(j: number): string {
     const g = this.g;
     const c = g.combat[j];
-    for (const [dx, dy] of [
-      [0, 1],
-      [1, 1],
-      [-1, 1],
-      [1, 0],
-      [-1, 0],
-      [0, -1],
-      [1, -1],
-      [-1, -1],
-    ]) {
-      const [x, y] = [c.x + dx, c.y + dy];
-      if (inArena(x, y) && combatantAt(g, x, y) < 0) return { x, y };
-    }
-    return { x: c.x, y: Math.min(10, c.y + 1) };
+    if (!c) return '';
+    if (c.flags & CF.Player) return g.s.members[c.who]?.name.trim() ?? '';
+    return (g.data.table(0x1856, 0x30)[c.who] ?? '').trim();
   }
 
-  /** Throw `dice` onto the field (the hook game/tactics.ts throwDice calls); resolved once they have all landed. */
+  /**
+   * Throw `dice` into the tray over the field (the hook game/tactics.ts throwDice calls): who rolls against whom, each
+   * die labelled for what it is, thrown in and tumbling to the face rolled; then what it came to - HIT! or MISS!, the
+   * blow less the armour - held a moment to be read. Resolved once it has been.
+   */
   async throwDice(dice: Die[]): Promise<void> {
     const g = this.g;
     const now = performance.now();
-    // the last throw shrinks away
-    for (const d of this.shown.dice) if (d.gone === undefined) d.gone = now;
-    const spot = this.landing(dice[0].at);
+    const first = dice[0];
+    const by = this.nameOf(first.by);
+    const at = this.nameOf(first.at);
+    const hit = dice.find((d) => d.what === 'hit');
+    const blow = dice.find((d) => d.what === 'blow');
+    const armour = dice.find((d) => d.what === 'armour');
+    const chance = dice.find((d) => d.what === 'chance');
+    const title = hit ? `${by} attacks ${at}` : chance ? `${at}: poison?` : `${by} strikes ${at}`;
+    const label = (d: Die): string =>
+      d.what === 'hit' ? `To hit (${d.need ?? 0}+)` : d.what === 'blow' ? 'Blow' : d.what === 'armour' ? 'Armour' : '1 spares';
     const throws = dice.map((die, k) => {
-      const lane = (k - (dice.length - 1) / 2) * 0.9;
-      const t = newThrow(this.rnd, die.sides, die.value, [spot.x + lane, spot.y], now + k * 50, die.foe);
-      t.look = die.what === 'armour' ? (die.foe ? FOE : FRIEND) : die.foe ? FOE : FRIEND;
-      return Object.assign(t, { die });
+      const lane = k - (dice.length - 1) / 2;
+      const t = newThrow(this.rnd, die.sides, die.value, [lane, 0], now + k * 60, die.foe);
+      return Object.assign(t, { die, label: label(die) });
     });
-    this.shown.dice = [...this.shown.dice.filter((d) => d.gone === undefined || now - d.gone < 150), ...throws];
+    // the tray clear of whom it is about: low on the field if they stand high, high if low
+    const target = g.combat[first.at];
+    this.tray = { title, dice: throws, result: null, top: !!target && target.y >= 5, hideAt: Infinity };
     this.say(dice);
     const end = Math.max(...throws.map((t) => t.start + t.dur));
     await new Promise<void>((done) => {
@@ -373,16 +417,29 @@ export class TacticsView {
       };
       requestAnimationFrame(tick);
     });
-    this.shown.settled = performance.now();
     this.sound(throws);
-    // the roll's moment to be read, before the blow
-    await g.p.sleep(160);
+    // what it came to
+    let result: { text: string; colour: string };
+    if (hit) result = hit.need === undefined || hit.value >= hit.need ? { text: 'HIT!', colour: GOOD } : { text: 'MISS!', colour: BAD };
+    else if (chance) result = chance.value === 1 ? { text: 'NO POISON', colour: GOOD } : { text: 'POISONED!', colour: BAD };
+    else if (blow && armour) {
+      const left = blow.value - armour.value;
+      result =
+        left > 0
+          ? { text: `${blow.value} - ${armour.value} = ${left} DAMAGE`, colour: GOOD }
+          : { text: `${blow.value} - ${armour.value}: GRAZED!`, colour: CHALK };
+    } else if (blow) result = { text: `${blow.value} DAMAGE`, colour: GOOD };
+    else result = { text: `${first.value}`, colour: CHALK };
+    if (this.tray) this.tray.result = result;
+    // read, then on to the blow (the tray goes a moment after, or as the next throw comes)
+    await g.p.sleep(RESULT_MS);
+    if (this.tray) this.tray.hideAt = performance.now() + 500;
   }
 
   /** The faces the dice show now (the browser test's): each die's value, the face its rotation turns up, landed or not. */
   faces(): { value: number; up: number; sides: number; landed: boolean }[] {
     const now = performance.now();
-    return this.shown.dice.map((d) => {
+    return (this.tray?.dice ?? []).map((d) => {
       const s = throwAt(d, now);
       return { value: d.value, up: faceUpOf(d, s.m), sides: d.sides, landed: s.t >= 1 };
     });
@@ -441,40 +498,81 @@ export class TacticsView {
     }
   }
 
-  private drawDice(ctx: CanvasRenderingContext2D): void {
+  /** The tray, over the field: a frame in the chalk line, felt inside, the title, the dice in a row, their labels, the result. */
+  private drawTray(ctx: CanvasRenderingContext2D): void {
+    const tr = this.tray;
+    if (!tr) return;
     const now = performance.now();
-    if (this.shown.dice.length && now > this.shown.settled + 1700 && this.shown.dice.every((d) => now >= d.start + d.dur)) {
-      for (const d of this.shown.dice) d.gone ??= now;
+    if (now >= tr.hideAt) {
+      this.tray = null;
+      return;
     }
-    this.shown.dice = this.shown.dice.filter((d) => d.gone === undefined || now - d.gone < 150);
-    const list = [...this.shown.dice].sort((a, b) => a.to[1] - b.to[1]);
-    for (const d of list) {
+    const [x0, y0] = this.at(0, 0);
+    const w = 10 * SQ;
+    const h = 6 * SQ;
+    const x = x0 + SQ / 2;
+    const y = tr.top ? y0 + SQ / 4 : y0 + 11 * SQ - h - SQ / 4;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = CHALK;
+    ctx.fillRect(x + E, y + E, w - 2 * E, E);
+    ctx.fillRect(x + E, y + h - 2 * E, w - 2 * E, E);
+    ctx.fillRect(x + E, y + E, E, h - 2 * E);
+    ctx.fillRect(x + w - 2 * E, y + E, E, h - 2 * E);
+    ctx.fillStyle = FELT;
+    ctx.fillRect(x + 3 * E, y + 3 * E, w - 6 * E, h - 6 * E);
+    const cell = 8 * E; // a letter's cell, as the game sets its own
+    const title = tr.title.length > 18 ? `${tr.title.slice(0, 17)}.` : tr.title;
+    this.text(ctx, title, x + w / 2, y + 5 * E, cell, CHALK, true);
+    // the dice, in a row across the felt
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x + 3 * E, y + 3 * E, w - 6 * E, h - 6 * E);
+    ctx.clip();
+    const D = DIE * E;
+    const ground = y + 5 * E + cell + 2 * E + D * 0.62;
+    for (const d of tr.dice) {
       if (now < d.start) continue;
       const s = throwAt(d, now);
-      const scale = d.gone === undefined ? 1 : Math.max(0, 1 - (now - d.gone) / 150);
-      if (scale <= 0) continue;
-      // a die as broad as a figure (fourteen of the EGA grain), on the page's own grain
-      const size = Math.round(14 * E * (1 + s.z * 0.1) * scale);
-      const [gx, gy] = this.at(s.x, s.y);
-      const cx = gx + SQ / 2;
-      const ground = gy + SQ / 2;
-      const lift = s.z * SQ * 0.8;
-      ctx.fillStyle = `rgba(0,0,0,${0.35 * (1 - Math.min(0.8, s.z / 3))})`;
+      const cx = x + w / 2 + s.x * D * 1.6;
+      const gy = ground + s.y * D * 0.6;
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
       ctx.beginPath();
-      ctx.ellipse(cx, ground + size * 0.32, size * 0.42, size * 0.15, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx, gy + D * 0.36, D * 0.42 * (1 - Math.min(0.5, s.z / 5)), D * 0.12, 0, 0, Math.PI * 2);
       ctx.fill();
       const cv = this.dieCanvas;
-      if (cv.width !== size) cv.width = cv.height = Math.max(1, size);
+      if (cv.width !== D) cv.width = cv.height = D;
       const dc = this.dieCtx;
       dc.setTransform(1, 0, 0, 1, 0, 0);
-      dc.clearRect(0, 0, cv.width, cv.height);
-      const landed = s.t >= 1;
-      const look = d.die.what === 'hit' && landed && d.die.need !== undefined && d.value >= d.die.need ? GOLD : d.look;
-      drawDie(dc, solid(d.sides), s.m, size / 2, size / 2, size * 0.42, look);
-      ctx.drawImage(cv, Math.round(cx - size / 2), Math.round(ground - lift - size / 2));
+      dc.clearRect(0, 0, D, D);
+      const look = d.die.what === 'hit' && s.t >= 1 && d.die.need !== undefined && d.value >= d.die.need ? GOLD : d.look;
+      drawDie(dc, solid(d.sides), s.m, D / 2, D / 2, D * 0.44, look, (c, text, ink, edge) =>
+        this.text(c, text, -text.length * 16, -16, 32, ink, false, edge),
+      );
+      ctx.drawImage(cv, Math.round(cx - D / 2), Math.round(gy - s.z * D * 0.8 - D / 2));
+      if (s.t >= 1) this.text(ctx, d.label, cx, gy + D * 0.42, 6 * E, CHALK, true, '#000');
     }
+    ctx.restore();
+    if (tr.result) this.text(ctx, tr.result.text, x + w / 2, y + h - cell - 6 * E, cell, tr.result.colour, true, '#000');
   }
 }
+
+/** A throw in the tray: its dice and what each is labelled, the result once landed, where it stands, when it goes. */
+interface Tray {
+  title: string;
+  dice: (Throw & { die: Die; label: string })[];
+  result: { text: string; colour: string } | null;
+  top: boolean;
+  hideAt: number;
+}
+
+/** How long a roll's result is held to be read (ms), before the blow it decides. */
+const RESULT_MS = 750;
+/** A die in the tray, across (EGA pixels): big enough for its numbers to be read. */
+const DIE = 48;
+const FELT = '#163a22';
+const GOOD = '#f8c840';
+const BAD = '#ff6a58';
 
 function faceUpOf(d: Throw, m: ReturnType<typeof throwAt>['m']): number {
   const s = solid(d.sides);
@@ -495,7 +593,7 @@ function faceUpOf(d: Throw, m: ReturnType<typeof throwAt>['m']): number {
  * their dexterity takes them (game/tactics.ts stepsFor); a second move is walked from where the first ends: square key
  * (y * 16 + x) to the squares walked to get there.
  */
-export function reachOf(g: Game, i: number): Map<number, number> {
+export function reachOf(g: Game, i: number, most?: number): Map<number, number> {
   const c = g.combat[i];
   const tile = g.s.actors[c.actor].tile;
   const open = (x: number, y: number): boolean => inArena(x, y) && combatantAt(g, x, y) < 0 && arenaFree(g, tile, x, y);
@@ -503,7 +601,7 @@ export function reachOf(g: Game, i: number): Map<number, number> {
   let edge = [[c.x, c.y]];
   // one move's walk: the rest of a move under way, else a whole move while an action is left (game/tactics.ts stepsFor)
   const t = g.tactics;
-  const limit = t.steps > 0 ? t.steps : t.left > 0 ? stepsFor(c.dex) : 0;
+  const limit = most ?? (t.steps > 0 ? t.steps : t.left > 0 ? stepsFor(c.dex) : 0);
   for (let step = 1; step <= limit; step++) {
     const next: number[][] = [];
     for (const [x, y] of edge)
@@ -525,8 +623,8 @@ export function reachOf(g: Game, i: number): Map<number, number> {
 }
 
 /** The way there, a square a step (the first step first), for a square reachOf gives. */
-export function pathOf(g: Game, i: number, x: number, y: number): { x: number; y: number }[] {
-  const reach = reachOf(g, i);
+export function pathOf(g: Game, i: number, x: number, y: number, most?: number): { x: number; y: number }[] {
+  const reach = reachOf(g, i, most);
   const c = g.combat[i];
   const out: { x: number; y: number }[] = [];
   let at = { x, y };
@@ -562,6 +660,21 @@ export function targetsOf(g: Game, i: number): Map<number, { x: number; y: numbe
     for (const j of targetsFrom(g, i, at.x, at.y)) if (!out.has(j)) out.set(j, at);
   }
   return out;
+}
+
+/** How far member combatant `i` can walk with the whole turn: the rest of a move under way, and a move for each action. */
+export function turnReach(g: Game, i: number): number {
+  const t = g.tactics;
+  return t.steps + t.left * stepsFor(g.combat[i].dex);
+}
+
+/**
+ * The walk toward square (x, y) the turn allows: the whole way, if the turn's moves reach it; else as far along the
+ * shortest way there as they go. Empty where there is no way.
+ */
+export function walkToward(g: Game, i: number, x: number, y: number): { x: number; y: number }[] {
+  const all = pathOf(g, i, x, y, 30);
+  return all.slice(0, turnReach(g, i));
 }
 
 export function installTacticsView(g: Game, screen: Screen): TacticsView {

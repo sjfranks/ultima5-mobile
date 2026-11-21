@@ -404,19 +404,22 @@ turn on it, once a turn. Gameplay, **Turns**, has 1988's one action back.
   would stop, and a second tap looses it. As in 1988 a missile strikes the
   first figure in its way, or breaks on a wall: who it would strike
   instead is marked, with the odds against them.
-- **The dice** fall where the rules roll them, thrown onto the field
-  beside whom they are for - blue for the party, red for the creatures:
-  the roll to hit on a d30, the blow and the armour on the least die that
-  holds their range (a long sword's 1 to 15 on a d20). Each lands on the
-  number the rules rolled, and the log says it ("d30 18>=9", "d12 6 -d4
-  1").
-- **On the field**, drawn as the game's own pixels and kept quiet: the
-  squares one move reaches, a small pale dot on each and a faint broken
-  line round them (a second move is shown from where the first ends); the
-  foes the weapon reaches, white corners, and those a walk away, fainter;
-  a gold pip over the member for each action left, and a pale dot under
-  them for each square left of a move under way. A tap walks or strikes;
-  a foe within a walk is walked to and struck, marked first and done at a
+- **The dice** are thrown into a tray over the field, clear of whom they
+  are for, as the rules roll them - blue for the party, red for the
+  creatures, big enough to read, numbered in the game's own lettering. The
+  tray says who rolls against whom ("Iolo attacks Orc"), labels each die
+  ("To hit (12+)", "Blow", "Armour"), and once they land says what came of
+  it: HIT! or MISS!, then the blow less the armour ("7 - 1 = 6 DAMAGE",
+  or GRAZED!). The roll to hit is thrown on a d30, the blow and the armour
+  on the least die that holds their range (a long sword's 1 to 15 on a
+  d20). The log says each throw too ("d30 18>=9", "d12 6 -d4 1").
+- **On the field**, drawn as the game's own pixels and kept quiet: a soft
+  line round the squares one move reaches (a second move is shown from
+  where the first ends); the foes the weapon reaches, white corners, and
+  those a walk away, fainter; a gold pip over the member for each action
+  left. A tap on a square walks there at once - past one move, the second
+  move takes the walk on, or as far toward it as the turn goes; a tap on a
+  foe within a walk walks to it and strikes, marked first and done at a
   second tap, its odds shown over it - 1988's own, the roll's chance, the
   blow to expect and the chance it fells it.
 - **The hotbar** is the touch bar's, in a member's turn: Attack, Cast,

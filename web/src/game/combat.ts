@@ -918,7 +918,7 @@ export function hitRoll(g: Game, target: number, attacker: number, _unused: numb
   const need = Math.trunc((tv - av + 0x1e) / 2);
   const r = roll(g);
   // Tactical turns: the roll shown as it fell, on a d30 (tactics.ts).
-  rolled(g, { sides: 30, value: r, foe: onMonsterSide(g, attacker), what: 'hit', need, at: target });
+  rolled(g, { sides: 30, value: r, foe: onMonsterSide(g, attacker), what: 'hit', need, at: target, by: attacker });
   return need <= r;
 }
 
@@ -992,7 +992,7 @@ export function damageRoll(g: Game, attacker: number, target: number): number {
     if (dmg > 1 && dmg !== 99) {
       const top = dmg;
       dmg = g.random(heavy ? Math.ceil(dmg / 2) : 1, dmg);
-      rolled(g, { sides: sidesFor(top) ?? 30, value: dmg, foe: onMonsterSide(g, attacker), what: 'blow', at: target });
+      rolled(g, { sides: sidesFor(top) ?? 30, value: dmg, foe: onMonsterSide(g, attacker), what: 'blow', at: target, by: attacker });
     }
   } else {
     dmg = s.weapon;
@@ -1012,7 +1012,7 @@ export function damageRoll(g: Game, attacker: number, target: number): number {
       if (dmg > 1 && dmg !== 99) {
         const top = dmg;
         dmg = g.random(1, dmg);
-        rolled(g, { sides: sidesFor(top) ?? 30, value: dmg, foe: onMonsterSide(g, attacker), what: 'blow', at: target });
+        rolled(g, { sides: sidesFor(top) ?? 30, value: dmg, foe: onMonsterSide(g, attacker), what: 'blow', at: target, by: attacker });
       }
     }
   }
@@ -1021,7 +1021,7 @@ export function damageRoll(g: Game, attacker: number, target: number): number {
   const def = tc.flags & CF.Monster ? enemy(g, tc.who).def : memberDefence(g, tc.who);
   if (def === 0) return dmg;
   const soak = g.random(1, def);
-  rolled(g, { sides: sidesFor(def) ?? 30, value: soak, foe: onMonsterSide(g, target), what: 'armour', at: target });
+  rolled(g, { sides: sidesFor(def) ?? 30, value: soak, foe: onMonsterSide(g, target), what: 'armour', at: target, by: attacker });
   return dmg - soak;
 }
 
@@ -1221,7 +1221,7 @@ export async function strike(g: Game, target: number, attacker: number): Promise
   const byMonster = (g.combat[attacker].flags & CF.Player) === 0;
   if (byMonster && enemyFlags(g, g.combat[attacker].who) & (EF.Poison200 | EF.Poison4)) {
     const r = g.random(0, 3);
-    rolled(g, { sides: 4, value: r + 1, foe: true, what: 'chance', at: target });
+    rolled(g, { sides: 4, value: r + 1, foe: true, what: 'chance', at: target, by: attacker });
     if (r !== 0) {
       await throwDice(g);
       await poison(g, target, attacker);

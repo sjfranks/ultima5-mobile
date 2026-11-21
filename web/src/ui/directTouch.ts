@@ -38,7 +38,7 @@ import { harpKeys, K, Pad, TOUCH, touchAt, touchPick, touchScroll } from '../gam
 import { T } from '../game/tiles.ts';
 import { tileAt } from '../game/world.ts';
 import type { Screen } from './screen.ts';
-import { pathOf, targetsOf } from './tacticsView.ts';
+import { pathOf, targetsOf, walkToward } from './tacticsView.ts';
 import { cancelsTouch } from './touch.ts';
 
 /** The view's squares: eleven a side, sixteen EGA pixels each, from (8, 8). */
@@ -854,8 +854,8 @@ export class DirectTouch {
   /**
    * A tap in a tactical turn (game/tactics.ts), whose two actions a tap may spend both of: a foe in reach struck, as
    * ever; a foe within a walk, walked to and struck - a move and a blow, so always marked first and done at a second
-   * tap on it; a square in the turn's reach walked to, each move as far as the member's dexterity takes them. Fight
-   * taps: Confirm marks the rest first, as ever.
+   * tap on it; any other square walked to at once - the whole way where the turn's moves reach it, else as far toward
+   * it as they go - each move as far as the member's dexterity takes them.
    */
   private tacticalTap(square: { x: number; y: number }, i: number): void {
     const g = this.g;
@@ -883,16 +883,16 @@ export class DirectTouch {
       g.bumpFoe = { x: square.x, y: square.y, pointed: true };
       return this.type(...walk.map((p, k) => arrow(k === 0 ? c : walk[k - 1], p)), 0x41);
     }
-    const path = pathOf(g, i, square.x, square.y);
+    // A square to walk to: walked to at once, a move at a time - the whole way, if the turn's moves reach it, else as far
+    // as they go toward it.
+    const path = walkToward(g, i, square.x, square.y);
+    this.armed = null;
     if (path.length) {
-      if (g.options.confirmFight && !marked) return mark({ frame: 'view', steps: path.slice(0, -1), end: square, kind: 'walk' });
-      this.armed = null;
-      const keys = path.map((p, k) => arrow(k === 0 ? c : path[k - 1], p));
-      this.type(...keys);
+      this.setWay(null);
+      this.type(...path.map((p, k) => arrow(k === 0 ? c : path[k - 1], p)));
       return;
     }
-    // Anywhere else, a step toward it, as ever.
-    this.armed = null;
+    // No way there: a step toward it, as ever.
     const tile = g.s.actors[c.actor].tile;
     const open = (x: number, y: number): boolean => combatantAt(g, x, y) < 0 && arenaFree(g, tile, x, y);
     this.key(firstStep(square.x, square.y, open, c.x, c.y) || arrowToward(square.x - c.x, square.y - c.y));

@@ -5,6 +5,8 @@ import { K, UNDO_ACTION } from '../src/game/io.ts';
 import { journeyOnward } from '../src/game/run.ts';
 import { hitChance, SERIES, sidesFor, stepsFor, walkCost, type Die } from '../src/game/tactics.ts';
 import { enterTown, townLoop } from '../src/game/town.ts';
+import { endTurn } from '../src/game/time.ts';
+import { Status } from '../src/game/save.ts';
 import { fighter, keys, newGame } from './helpers.ts';
 
 async function outside(seed = 1234) {
@@ -49,6 +51,23 @@ describe('tactical turns', () => {
     expect([1, 3, 4, 6, 7].map((d) => walkCost(g, 0, d))).toEqual([1, 1, 2, 2, 3]);
     g.tactics.steps = 2;
     expect([1, 2, 3, 5, 6].map((d) => walkCost(g, 0, d))).toEqual([0, 0, 1, 1, 2]);
+  });
+
+  it("holds poison's bite while a tapped walk goes on, and takes it all at the walk's end", async () => {
+    const { g } = await outside(4);
+    const m = g.s.members[0];
+    m.status = Status.Poisoned;
+    m.hp = 30;
+    let going = true;
+    g.walkingOn = () => going;
+    await endTurn(g);
+    await endTurn(g);
+    expect(m.hp).toBe(30);
+    expect(g.poisonOwed[0]).toBe(2);
+    going = false;
+    await endTurn(g);
+    expect(m.hp).toBe(27);
+    expect(g.poisonOwed[0]).toBe(0);
   });
 
   it('throws each roll on the least die that holds its range', () => {

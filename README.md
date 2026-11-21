@@ -396,10 +396,11 @@ turn on it, once a turn. Gameplay, **Turns**, has 1988's one action back.
   anything else ends the turn.
 - **A walk is seen**: a tapped way is walked a square at a time, the
   figure gliding from square to square (Smooth motion), not set down at
-  its end.
+  its end. Anywhere, a tapped walk is not broken off by poison's bite:
+  the poisoned take what they are owed together at the walk's end.
 - **An aim is chosen**: with the crosshair up - a shot, or a spell such as
-  Grav Por or Vas Flam - the squares it reaches are washed brass and the
-  foes there marked; a tap aims at a square, its flight dotted to where it
+  Grav Por or Vas Flam - a faint brass line goes round the squares it
+  reaches and the foes there are marked; a tap aims at a square, its flight dotted to where it
   would stop, and a second tap looses it. As in 1988 a missile strikes the
   first figure in its way, or breaks on a wall: who it would strike
   instead is marked, with the odds against them.
@@ -409,15 +410,15 @@ turn on it, once a turn. Gameplay, **Turns**, has 1988's one action back.
   holds their range (a long sword's 1 to 15 on a d20). Each lands on the
   number the rules rolled, and the log says it ("d30 18>=9", "d12 6 -d4
   1").
-- **On the field**, drawn as the game's own pixels: the squares the turn's
-  actions can walk to, washed blue (more lightly where a second move is
-  wanted), a pale line round them; the foes the
-  weapon reaches, red with white corners, and those it reaches after a
-  walk, fainter; a gold pip over the member for each action left, and a
-  pale dot under them for each square left of a move under way. A tap
-  walks or strikes; a foe within a walk is walked to and struck, marked first and done at a second tap, its odds shown
-  over it - 1988's own, the roll's chance, the blow to expect and the
-  chance it fells it.
+- **On the field**, drawn as the game's own pixels and kept quiet: the
+  squares one move reaches, a small pale dot on each and a faint broken
+  line round them (a second move is shown from where the first ends); the
+  foes the weapon reaches, white corners, and those a walk away, fainter;
+  a gold pip over the member for each action left, and a pale dot under
+  them for each square left of a move under way. A tap walks or strikes;
+  a foe within a walk is walked to and struck, marked first and done at a
+  second tap, its odds shown over it - 1988's own, the roll's chance, the
+  blow to expect and the chance it fells it.
 - **The hotbar** is the touch bar's, in a member's turn: Attack, Cast,
   Use, Pass and Undo; the Act menu, Ready, Ztats, Switch Weapon and the
   Pause menu on its other page; and End, which asks first. Undo takes back

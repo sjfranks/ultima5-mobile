@@ -29,7 +29,7 @@ import {
   weaponFor,
 } from '../game/combat.ts';
 import { CF, type Game } from '../game/game.ts';
-import { hitChance, walkCost, walkReach, type Die } from '../game/tactics.ts';
+import { hitChance, stepsFor, walkCost, type Die } from '../game/tactics.ts';
 import { drawDie, FOE, FRIEND, GOLD, newThrow, solid, throwAt, type Throw } from './dice3d.ts';
 import { HI, TILE_X, TILE_Y } from './framebuffer.ts';
 import type { Screen } from './screen.ts';
@@ -38,15 +38,11 @@ import type { Screen } from './screen.ts';
 const E = HI;
 const SQ = 16 * E;
 
-const FILL = {
-  move: 'rgba(80, 140, 255, 0.38)',
-  further: 'rgba(80, 140, 255, 0.18)',
-  aim: 'rgba(176, 138, 74, 0.12)',
-  target: 'rgba(208, 64, 47, 0.5)',
-  far: 'rgba(208, 64, 47, 0.25)',
-};
 const CHALK = '#f0ece0';
-const BRASS = '#d6aa60';
+/** The reach's marks: a pale blue dot a square, a faint broken line round them; an aim's line, brass. */
+const DOT = 'rgba(170, 205, 255, 0.85)';
+const EDGE = 'rgba(190, 215, 255, 0.55)';
+const AIM_EDGE = 'rgba(214, 170, 96, 0.6)';
 
 interface Shown {
   dice: (Throw & { die: Die })[];
@@ -137,30 +133,19 @@ export class TacticsView {
     const g = this.g;
     const c = g.combat[i];
     const reach = this.reach(i);
-    // the squares this move reaches washed blue; those a second move would, more lightly
-    const first = Math.max(1, ...[...reach.values()].filter((d) => walkCost(g, i, d) <= 1));
-    for (const [k, d] of reach) {
+    // the squares this move reaches: a small pale dot on each, and a faint broken line round the whole
+    for (const k of reach.keys()) {
       const [x, y] = this.at(k & 15, k >> 4);
-      ctx.fillStyle = d <= first ? FILL.move : FILL.further;
-      ctx.fillRect(x, y, SQ, SQ);
+      ctx.fillStyle = DOT;
+      ctx.fillRect(x + 7 * E, y + 7 * E, 2 * E, 2 * E);
     }
-    // one pale line round the whole reach, on its outer edges only (the member's own square counted in)
     const has = (x: number, y: number): boolean => reach.has(y * 16 + x) || (x === c.x && y === c.y);
-    ctx.fillStyle = CHALK;
-    for (const k of [...reach.keys(), c.y * 16 + c.x]) {
-      const [sx, sy] = [k & 15, k >> 4];
-      const [x, y] = this.at(sx, sy);
-      if (!has(sx, sy - 1)) ctx.fillRect(x, y, SQ, E);
-      if (!has(sx, sy + 1)) ctx.fillRect(x, y + SQ - E, SQ, E);
-      if (!has(sx - 1, sy)) ctx.fillRect(x, y, E, SQ);
-      if (!has(sx + 1, sy)) ctx.fillRect(x + SQ - E, y, E, SQ);
-    }
+    this.edge(ctx, [...reach.keys(), c.y * 16 + c.x], has, EDGE);
+    // the foes in reach: corners only - fainter for those a walk away
     for (const [j, step] of this.targets(i)) {
       const t = g.combat[j];
       const [x, y] = this.at(t.x, t.y);
-      ctx.fillStyle = step ? FILL.far : FILL.target;
-      ctx.fillRect(x, y, SQ, SQ);
-      this.corners(ctx, x, y, step ? 0.55 : 1);
+      this.corners(ctx, x, y, step ? 0.5 : 0.95);
     }
     // the turn's actions: a gold pip each, over the member, dark once spent
     const [mx, my] = this.at(c.x, c.y);
@@ -221,25 +206,14 @@ export class TacticsView {
     const c = g.combat[i];
     const range = g.aimReach;
     const inReach = (x: number, y: number): boolean => inArena(x, y) && distance(x, y, c.x, c.y) <= range && !(x === c.x && y === c.y);
-    for (let y = 0; y < 11; y++)
-      for (let x = 0; x < 11; x++) {
-        if (!inReach(x, y)) continue;
-        const [px, py] = this.at(x, y);
-        ctx.fillStyle = FILL.aim;
-        ctx.fillRect(px, py, SQ, SQ);
-        ctx.fillStyle = BRASS;
-        if (!inReach(x, y - 1)) ctx.fillRect(px, py, SQ, E);
-        if (!inReach(x, y + 1)) ctx.fillRect(px, py + SQ - E, SQ, E);
-        if (!inReach(x - 1, y)) ctx.fillRect(px, py, E, SQ);
-        if (!inReach(x + 1, y)) ctx.fillRect(px + SQ - E, py, E, SQ);
-      }
+    const zone: number[] = [];
+    for (let y = 0; y < 11; y++) for (let x = 0; x < 11; x++) if (inReach(x, y)) zone.push(y * 16 + x);
+    this.edge(ctx, zone, inReach, AIM_EDGE);
     for (let j = 0; j < 0x20; j++) {
       const f = g.combat[j];
       if (!f.flags || f.flags & CF.Dead || !onMonsterSide(g, j) || !inReach(f.x, f.y)) continue;
       const [px, py] = this.at(f.x, f.y);
-      ctx.fillStyle = FILL.target;
-      ctx.fillRect(px, py, SQ, SQ);
-      this.corners(ctx, px, py, 1);
+      this.corners(ctx, px, py, 0.95);
     }
     // the flight, dotted, to where it stops
     const weapon = s.weapon;
@@ -260,9 +234,7 @@ export class TacticsView {
     if (blocked) {
       // what is in the way: struck instead, or the wall it breaks on
       const [px, py] = this.at(stop.x, stop.y);
-      ctx.fillStyle = 'rgba(255, 200, 40, 0.45)';
-      ctx.fillRect(px, py, SQ, SQ);
-      this.corners(ctx, px, py, 1);
+      this.corners(ctx, px, py, 1, '#ffc840');
     }
     if (j >= 0 && j !== i) {
       const need = hitNeed(g, j, i, weapon);
@@ -283,10 +255,28 @@ export class TacticsView {
     } else if (blocked) this.tag(ctx, stop.x, stop.y, 'Blocked', '');
   }
 
+  /**
+   * A broken line round squares `keys` (y * 16 + x), on their outer edges only: dashes of two pixels of the EGA grain
+   * with two between, along each edge where the next square is not one of them.
+   */
+  private edge(ctx: CanvasRenderingContext2D, keys: number[], has: (x: number, y: number) => boolean, colour: string): void {
+    ctx.fillStyle = colour;
+    for (const k of keys) {
+      const [sx, sy] = [k & 15, k >> 4];
+      const [x, y] = this.at(sx, sy);
+      for (let d = 0; d < 16; d += 4) {
+        if (!has(sx, sy - 1)) ctx.fillRect(x + d * E, y, 2 * E, E);
+        if (!has(sx, sy + 1)) ctx.fillRect(x + d * E, y + SQ - E, 2 * E, E);
+        if (!has(sx - 1, sy)) ctx.fillRect(x, y + d * E, E, 2 * E);
+        if (!has(sx + 1, sy)) ctx.fillRect(x + SQ - E, y + d * E, E, 2 * E);
+      }
+    }
+  }
+
   /** White corners, a pixel of the EGA grain wide, four long, in from the square's edge. */
-  private corners(ctx: CanvasRenderingContext2D, x: number, y: number, alpha: number): void {
+  private corners(ctx: CanvasRenderingContext2D, x: number, y: number, alpha: number, colour = '#ffffff'): void {
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = colour;
     const a = E;
     const l = 4 * E;
     for (const [cx, cy, sx, sy] of [
@@ -501,8 +491,9 @@ function faceUpOf(d: Throw, m: ReturnType<typeof throwAt>['m']): number {
 }
 
 /**
- * The squares member combatant `i` can walk to with the move under way and the turn's actions left, each move as far as
- * their dexterity takes them (game/tactics.ts stepsFor): square key (y * 16 + x) to the squares walked to get there.
+ * The squares member combatant `i` can walk to with one move - the rest of a move under way, or a new one as far as
+ * their dexterity takes them (game/tactics.ts stepsFor); a second move is walked from where the first ends: square key
+ * (y * 16 + x) to the squares walked to get there.
  */
 export function reachOf(g: Game, i: number): Map<number, number> {
   const c = g.combat[i];
@@ -510,7 +501,10 @@ export function reachOf(g: Game, i: number): Map<number, number> {
   const open = (x: number, y: number): boolean => inArena(x, y) && combatantAt(g, x, y) < 0 && arenaFree(g, tile, x, y);
   const out = new Map<number, number>();
   let edge = [[c.x, c.y]];
-  for (let step = 1; step <= walkReach(g, i); step++) {
+  // one move's walk: the rest of a move under way, else a whole move while an action is left (game/tactics.ts stepsFor)
+  const t = g.tactics;
+  const limit = t.steps > 0 ? t.steps : t.left > 0 ? stepsFor(c.dex) : 0;
+  for (let step = 1; step <= limit; step++) {
     const next: number[][] = [];
     for (const [x, y] of edge)
       for (const [dx, dy] of [

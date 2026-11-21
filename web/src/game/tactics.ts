@@ -153,12 +153,6 @@ export function walkCost(g: Game, i: number, d: number): number {
   return Math.ceil((d - t.steps) / stepsFor(g.combat[i].dex));
 }
 
-/** The farthest fighter `i` can walk with the turn's actions and the move under way. */
-export function walkReach(g: Game, i: number): number {
-  const t = g.tactics;
-  return t.steps + t.left * stepsFor(g.combat[i].dex);
-}
-
 export function putBack(g: Game, snap: Snap): void {
   g.s.b.set(snap.s);
   g.combatBytes.set(snap.combat);

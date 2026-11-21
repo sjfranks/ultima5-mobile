@@ -186,8 +186,22 @@ export async function endTurn(g: Game): Promise<void> {
       awake++;
     }
   }
-  // The poisoned hurt together: one flash and one hit for all of them (damageMembers).
-  await damageMembers(g, poisoned, 1, spare);
+  // The poisoned hurt together: one flash and one hit for all of them (damageMembers). On a tapped walk with squares
+  // still to go, the hits are owed and taken together at its end, the walk not broken off by each (ui/directTouch.ts).
+  if (g.walkingOn?.()) for (const i of poisoned) g.poisonOwed[i]++;
+  else {
+    const who: number[] = [];
+    const bites: number[] = [];
+    for (let i = 0; i < s.partySize; i++) {
+      const owed = g.poisonOwed[i] + (poisoned.includes(i) ? 1 : 0);
+      g.poisonOwed[i] = 0;
+      if (owed && s.members[i].status === Status.Poisoned && s.members[i].hp > spare) {
+        who.push(i);
+        bites.push(owed);
+      }
+    }
+    await damageMembers(g, who, bites, spare);
+  }
   if (s.hour !== s.lastHour) {
     if (s.food === 0) {
       await starve(g);

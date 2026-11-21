@@ -134,6 +134,10 @@ export class Game {
   rng: Random = new TrueRandom();
   /** Tactical turns: two actions a turn, the dice shown (tactics.ts). */
   readonly tactics = new Tactics();
+  /** Whether a tapped walk goes on past this step (ui/directTouch.ts): poison waits for its end (time.ts endTurn). */
+  walkingOn: (() => boolean) | null = null;
+  /** Poison owed each member while a walk went on, bitten all at once at its end (time.ts endTurn). */
+  readonly poisonOwed: number[] = [0, 0, 0, 0, 0, 0];
   /** A tactical aim's square tapped once (combat.ts aim): the next tap there looses it. */
   aimTapped = false;
 

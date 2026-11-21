@@ -240,6 +240,8 @@ interface Walk {
   steps: number;
   last: { x: number; y: number } | null;
   at: number;
+  /** The squares still to walk after the step last taken. */
+  ahead: number;
 }
 
 export interface DirectTouchOptions {
@@ -277,6 +279,8 @@ export class DirectTouch {
     private readonly options: DirectTouchOptions,
   ) {
     const canvas = screen.canvas;
+    // A tapped walk with squares still to go: the game holds its poison's bite till the walk is done (time.ts endTurn).
+    g.walkingOn = () => this.walk !== null && this.walk.ahead > 0;
     canvas.addEventListener('pointerdown', (e) => this.down(e));
     canvas.addEventListener('pointermove', (e) => this.move(e));
     canvas.addEventListener('pointerup', (e) => this.up(e));
@@ -1000,7 +1004,7 @@ export class DirectTouch {
     const wrap = g.outdoors ? 0xff : 0xffff;
     const mx = (s.x + to.x - MIDDLE) & wrap;
     const my = (s.y + to.y - MIDDLE) & wrap;
-    this.walk = { map: s.mapId, level: s.level, x: mx, y: my, actor: this.actorAt(mx, my), steps: 0, last: null, at: 0 };
+    this.walk = { map: s.mapId, level: s.level, x: mx, y: my, actor: this.actorAt(mx, my), steps: 0, last: null, at: 0, ahead: 0 };
     this.walkOn();
     if (this.walk && this.walkTimer === null) this.walkTimer = setInterval(() => this.walkOn(), 40);
   }
@@ -1086,6 +1090,8 @@ export class DirectTouch {
       return;
     }
     w.last = { x: (s.x + step[0]) & (g.outdoors ? 0xff : 0xffff), y: (s.y + step[1]) & (g.outdoors ? 0xff : 0xffff) };
+    // The squares still to walk after this one: poison waits for the walk's end (time.ts endTurn).
+    w.ahead = Math.max(0, found.length - 1);
     this.key(key, w.steps > 1);
   }
 

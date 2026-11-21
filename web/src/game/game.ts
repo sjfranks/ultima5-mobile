@@ -134,6 +134,8 @@ export class Game {
   rng: Random = new TrueRandom();
   /** Tactical turns: two actions a turn, the dice shown (tactics.ts). */
   readonly tactics = new Tactics();
+  /** A tactical aim's square tapped once (combat.ts aim): the next tap there looses it. */
+  aimTapped = false;
 
   /** D_6608: the map in memory: four 16x16 chunks of the world, or a settlement level. */
   readonly map = new Uint8Array(1024);

@@ -231,6 +231,51 @@ async function game(browser, url, touch = true) {
     await p.locator('button[aria-label="Pass"]').tap();
     await p.waitForTimeout(200);
   }
+  // a spell aimed where the player chooses: the first tap aims (its flight and odds shown), the second casts
+  {
+    let cast = false;
+    for (let turns = 0; turns < 30 && !cast; turns++) {
+      s = await ready();
+      if (!s) {
+        seen = false;
+        await p.goto(`${BASE}/index.html?play&new&peek&autoscan=true&at=arena:2`);
+        await p.waitForFunction(() => window.u5 && window.u5tactics, null, { timeout: 60000 });
+        await said();
+        continue;
+      }
+      const avatar = await view(() => window.u5.g.combat[window.u5.g.s.combatTurn].who === 0 && window.u5.g.s.mixtures[1] > 0);
+      if (!avatar || s.left < 1) {
+        await p.locator('button[aria-label="Pass"]').tap();
+        await p.waitForTimeout(250);
+        continue;
+      }
+      await p.locator('button[aria-label="Cast"]').tap();
+      await p.waitForTimeout(600);
+      await p.keyboard.press('Enter'); // Magic missile, the list's first
+      await p.waitForFunction(() => window.u5.g.s.crosshair === 1, null, { timeout: 10000 });
+      const aim = await view(() => {
+        const g = window.u5.g;
+        const foes = [];
+        for (let j = 0; j < 32; j++)
+          if (g.combat[j].flags & 0x40 && !(g.combat[j].flags & 0x20)) foes.push({ x: g.combat[j].x, y: g.combat[j].y });
+        return { foes, cross: { x: g.s.crossX, y: g.s.crossY } };
+      });
+      const pick = aim.foes.find((f) => f.x !== aim.cross.x || f.y !== aim.cross.y) ?? aim.foes[0];
+      await tap(pick.x, pick.y);
+      await p.waitForTimeout(300);
+      const first = await view(() => ({ up: window.u5.g.s.crosshair, x: window.u5.g.s.crossX, y: window.u5.g.s.crossY }));
+      check(
+        first.up === 1 && first.x === pick.x && first.y === pick.y,
+        "a spell's first tap aims at the square chosen, and casts nothing yet",
+      );
+      await shot('6-aim');
+      await tap(pick.x, pick.y);
+      await p.waitForFunction(() => window.u5.g.s.crosshair === 0, null, { timeout: 15000 });
+      check(true, 'the second tap on it casts');
+      cast = true;
+    }
+    check(cast, 'a spell was aimed and cast');
+  }
   check(struck, 'a member walked to a foe and struck it');
   check(refused, 'a member was refused an undo after a roll');
   check(ended, 'a member ended their turn');

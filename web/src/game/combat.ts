@@ -1572,10 +1572,20 @@ export async function aim(g: Game, i: number, range: number, friend = false): Pr
     const at = atOf(k);
     if (at) {
       if (at.x < 0 || at.y < 0 || at.x > 0xa || at.y > 0xa) continue;
-      if (distance(at.x, at.y, g.combat[i].x, g.combat[i].y) > range) continue;
+      if (distance(at.x, at.y, g.combat[i].x, g.combat[i].y) > range) {
+        if (g.tactics.on) g.print('Out of range!\n');
+        continue;
+      }
       if (at.x === g.combat[i].x && at.y === g.combat[i].y) continue;
+      // Tactical turns, Fight taps: Confirm: the first tap aims (its flight and odds shown: ui/tacticsView.ts), a
+      // second on the same square looses it.
+      const again = s.crossX === at.x && s.crossY === at.y && g.aimTapped;
       s.crossX = at.x;
       s.crossY = at.y;
+      if (g.tactics.on && g.options.confirmFight && !again) {
+        g.aimTapped = true;
+        continue;
+      }
       k = K.Enter;
     }
     // The button that began it looses it, as A does: X an attack's blow, Y a spell's (and neither the other's).
@@ -1637,6 +1647,7 @@ export async function aim(g: Game, i: number, range: number, friend = false): Pr
   }
   s.crosshair = 0;
   g.aimReach = 0;
+  g.aimTapped = false;
   if (hint) clearBorderTitle(g);
   if (cancel) {
     g.printChar('\n');
@@ -2410,6 +2421,31 @@ export function clearShot(g: Game, x1: number, y1: number, x2: number, y2: numbe
   return true;
 }
 
+/**
+ * Where a missile from cell (x1, y1) at (x2, y2) would stop, and the squares it would fly over: shoot's flight, undrawn
+ * (clearShot's) - at a wall, or at whoever stands in its way, or where it was aimed (tactics: the aim shown).
+ */
+export function flightOf(
+  g: Game,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  kind: number,
+): { stop: { x: number; y: number }; over: { x: number; y: number }[] } {
+  const { xs, ys, step } = flight(g, x1, y1, x2, y2, kind);
+  const over: { x: number; y: number }[] = [];
+  for (let at = kind === 0 ? 4 : 0; at < xs.length && xs[at] !== 0xff; ) {
+    const [cx, cy] = cellOf(xs[at], ys[at]);
+    if (cx === -1) break;
+    if (!over.some((q) => q.x === cx && q.y === cy) && (cx !== x1 || cy !== y1)) over.push({ x: cx, y: cy });
+    at += step;
+    if (at >= xs.length || xs[at] === 0xff) break;
+    if (!passable(g, cx, cy) && (x1 !== cx || y1 !== cy)) return { stop: { x: cx, y: cy }, over };
+  }
+  return { stop: { x: x2, y: y2 }, over };
+}
+
 // --- The arena's ways ------------------------------------------------------------------------
 
 /** COMBAT_111a: stepping on a trigger square changes up to two others (secret doors in dungeon rooms and the like). */
@@ -3149,6 +3185,9 @@ async function playerTurn(g: Game): Promise<boolean> {
   return false;
 }
 
+/** How long each square of a tactical walk takes (ms): the figure seen to walk from square to square. */
+export const STEP_MS = 220;
+
 /**
  * A fighter's turn: one action, as in 1988 - or with tactical turns (tactics.ts), two, one after the other, the same
  * fighter's: a step, a blow, a spell, a pass, each one. The turn ends early where the fight does, where the fighter
@@ -3196,6 +3235,8 @@ async function takeTurn(g: Game): Promise<void> {
       }
       if (!spent) continue;
       acted = true;
+      // A walk goes a square at a time, the figure seen to go (Smooth motion glides it), not all at once.
+      if (t.stepped) await g.p.sleep(STEP_MS);
       if (t.stepped) {
         // A step: of the move under way, free; else a move begun - an action, and its squares to walk (stepsFor).
         if (t.steps > 0) t.steps--;

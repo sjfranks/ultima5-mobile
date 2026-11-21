@@ -394,6 +394,15 @@ turn on it, once a turn. Gameplay, **Turns**, has 1988's one action back.
   party and the creatures alike. A blow, a spell or a pass ends a move
   under way; with no actions left, its squares may still be walked, and
   anything else ends the turn.
+- **A walk is seen**: a tapped way is walked a square at a time, the
+  figure gliding from square to square (Smooth motion), not set down at
+  its end.
+- **An aim is chosen**: with the crosshair up - a shot, or a spell such as
+  Grav Por or Vas Flam - the squares it reaches are washed brass and the
+  foes there marked; a tap aims at a square, its flight dotted to where it
+  would stop, and a second tap looses it. As in 1988 a missile strikes the
+  first figure in its way, or breaks on a wall: who it would strike
+  instead is marked, with the odds against them.
 - **The dice** fall where the rules roll them, thrown onto the field
   beside whom they are for - blue for the party, red for the creatures:
   the roll to hit on a d30, the blow and the armour on the least die that

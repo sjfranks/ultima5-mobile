@@ -15,7 +15,19 @@
  *   said in the log too.
  */
 
-import { arenaFree, blowOdds, combatantAt, hitNeed, inArena, onMonsterSide, snapTargets, targetsFrom, weaponFor } from '../game/combat.ts';
+import {
+  arenaFree,
+  blowOdds,
+  combatantAt,
+  distance,
+  flightOf,
+  hitNeed,
+  inArena,
+  onMonsterSide,
+  snapTargets,
+  targetsFrom,
+  weaponFor,
+} from '../game/combat.ts';
 import { CF, type Game } from '../game/game.ts';
 import { hitChance, walkCost, walkReach, type Die } from '../game/tactics.ts';
 import { drawDie, FOE, FRIEND, GOLD, newThrow, solid, throwAt, type Throw } from './dice3d.ts';
@@ -29,10 +41,12 @@ const SQ = 16 * E;
 const FILL = {
   move: 'rgba(80, 140, 255, 0.38)',
   further: 'rgba(80, 140, 255, 0.18)',
+  aim: 'rgba(176, 138, 74, 0.12)',
   target: 'rgba(208, 64, 47, 0.5)',
   far: 'rgba(208, 64, 47, 0.25)',
 };
 const CHALK = '#f0ece0';
+const BRASS = '#d6aa60';
 
 interface Shown {
   dice: (Throw & { die: Die })[];
@@ -113,6 +127,8 @@ export class TacticsView {
     ctx.clip();
     const i = this.member();
     if (i >= 0 && this.screen.waiting) this.drawTurn(ctx, i);
+    const a = this.aiming();
+    if (a >= 0 && this.screen.waiting) this.drawAim(ctx, a);
     this.drawDice(ctx);
     ctx.restore();
   }
@@ -183,6 +199,88 @@ export class TacticsView {
           );
       }
     }
+  }
+
+  /** The member aiming in a tactical turn (the crosshair up: a blow, a shot, a spell); -1 otherwise. */
+  private aiming(): number {
+    const g = this.g;
+    const i = g.s.combatTurn;
+    const c = g.combat[i];
+    if (!g.tactics.on || g.tactics.turn !== i || g.s.crosshair !== 1 || g.aimReach <= 0 || !c || (c.flags & CF.Player) === 0) return -1;
+    return i;
+  }
+
+  /**
+   * An aim, shown: the squares it reaches washed brass with a line round them, the foes there marked, and the flight to
+   * the crosshair dotted to where it would stop - a wall, or whoever stands in the way, struck instead (1988's flight:
+   * combat.ts shoot) - with that one's odds, 1988's own.
+   */
+  private drawAim(ctx: CanvasRenderingContext2D, i: number): void {
+    const g = this.g;
+    const s = g.s;
+    const c = g.combat[i];
+    const range = g.aimReach;
+    const inReach = (x: number, y: number): boolean => inArena(x, y) && distance(x, y, c.x, c.y) <= range && !(x === c.x && y === c.y);
+    for (let y = 0; y < 11; y++)
+      for (let x = 0; x < 11; x++) {
+        if (!inReach(x, y)) continue;
+        const [px, py] = this.at(x, y);
+        ctx.fillStyle = FILL.aim;
+        ctx.fillRect(px, py, SQ, SQ);
+        ctx.fillStyle = BRASS;
+        if (!inReach(x, y - 1)) ctx.fillRect(px, py, SQ, E);
+        if (!inReach(x, y + 1)) ctx.fillRect(px, py + SQ - E, SQ, E);
+        if (!inReach(x - 1, y)) ctx.fillRect(px, py, E, SQ);
+        if (!inReach(x + 1, y)) ctx.fillRect(px + SQ - E, py, E, SQ);
+      }
+    for (let j = 0; j < 0x20; j++) {
+      const f = g.combat[j];
+      if (!f.flags || f.flags & CF.Dead || !onMonsterSide(g, j) || !inReach(f.x, f.y)) continue;
+      const [px, py] = this.at(f.x, f.y);
+      ctx.fillStyle = FILL.target;
+      ctx.fillRect(px, py, SQ, SQ);
+      this.corners(ctx, px, py, 1);
+    }
+    // the flight, dotted, to where it stops
+    const weapon = s.weapon;
+    const kind = weapon && weapon !== 0xff ? g.data.bytes(0x169c, 0x38)[weapon] : 0;
+    const to = { x: s.crossX, y: s.crossY };
+    const near = Math.max(Math.abs(to.x - c.x), Math.abs(to.y - c.y)) <= 1;
+    const { stop, over } = near ? { stop: to, over: [to] } : flightOf(g, c.x, c.y, to.x, to.y, kind);
+    for (const q of over) {
+      if (q.x === stop.x && q.y === stop.y) break;
+      const [px, py] = this.at(q.x, q.y);
+      ctx.fillStyle = '#1a1006';
+      ctx.fillRect(px + 6 * E, py + 6 * E, 4 * E, 4 * E);
+      ctx.fillStyle = CHALK;
+      ctx.fillRect(px + 7 * E, py + 7 * E, 2 * E, 2 * E);
+    }
+    const blocked = stop.x !== to.x || stop.y !== to.y;
+    const j = combatantAt(g, stop.x, stop.y);
+    if (blocked) {
+      // what is in the way: struck instead, or the wall it breaks on
+      const [px, py] = this.at(stop.x, stop.y);
+      ctx.fillStyle = 'rgba(255, 200, 40, 0.45)';
+      ctx.fillRect(px, py, SQ, SQ);
+      this.corners(ctx, px, py, 1);
+    }
+    if (j >= 0 && j !== i) {
+      const need = hitNeed(g, j, i, weapon);
+      const blow = blowOdds(g, i, j, weapon);
+      const hit = need === null ? 1 : hitChance(need);
+      const odds = `${Math.round(hit * 100)}% ~${blow ? blow.avg.toFixed(0) : '!'}`;
+      const name =
+        g.combat[j].flags & CF.Player
+          ? (s.members[g.combat[j].who]?.name.trim() ?? '')
+          : (g.data.table(0x1856, 0x30)[g.combat[j].who] ?? '');
+      this.tag(
+        ctx,
+        stop.x,
+        stop.y,
+        blocked ? `${name}!` : odds,
+        blocked ? odds : blow && blow.kill > 0 ? `KO ${Math.round(blow.kill * 100)}%` : '',
+      );
+    } else if (blocked) this.tag(ctx, stop.x, stop.y, 'Blocked', '');
   }
 
   /** White corners, a pixel of the EGA grain wide, four long, in from the square's edge. */

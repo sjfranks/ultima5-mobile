@@ -445,18 +445,34 @@ export class TacticsView {
     });
   }
 
-  /** Each throw in the log too, as the game's own lines are: the roll to hit and what it needed, the blow less armour. */
+  /**
+   * Each throw in the log too, a line a roll, labelled as the tray labels it: the roll to hit and what it needed, HIT!
+   * or MISS!; the blow less the armour, and the damage it comes to; poison's chance.
+   */
   private say(dice: Die[]): void {
     const g = this.g;
-    const parts: string[] = [];
+    const lines: string[] = [];
+    const blow = dice.find((d) => d.what === 'blow');
+    const armour = dice.find((d) => d.what === 'armour');
     for (const d of dice) {
-      if (d.what === 'hit') parts.push(`d30 ${d.value}${d.need !== undefined ? (d.value >= d.need ? `>=${d.need}` : `<${d.need}`) : ''}`);
-      else if (d.what === 'blow') parts.push(`d${d.sides} ${d.value}`);
-      else if (d.what === 'armour') parts.push(`-d${d.sides} ${d.value}`);
-      else parts.push(`d${d.sides} ${d.value}`);
+      if (d.what === 'hit') {
+        const hit = d.need === undefined || d.value >= d.need;
+        lines.push(`To hit (d30): ${d.value}${d.need !== undefined ? ` vs ${d.need}` : ''} - ${hit ? 'HIT!' : 'MISS!'}`);
+      } else if (d.what === 'chance') {
+        lines.push(`Poison (d${d.sides}): ${d.value} - ${d.value === 1 ? 'no poison' : 'POISONED!'}`);
+      }
     }
+    if (blow && armour) {
+      const left = blow.value - armour.value;
+      lines.push(
+        `Damage (d${blow.sides} - d${armour.sides}): ${blow.value} - ${armour.value}` +
+          (left > 0 ? ` = ${left}` : ' - grazed!'),
+      );
+    } else if (blow) lines.push(`Damage (d${blow.sides}): ${blow.value}`);
+    else if (armour) lines.push(`Armour (d${armour.sides}): ${armour.value}`);
+    if (!lines.length) return;
     if (g.text.win.x !== 0) g.printChar('\n');
-    g.print(`${parts.join(' ')}\n`);
+    for (const l of lines) g.print(`${l}\n`);
   }
 
   /** A wooden clack at each landing and bounce, quieter each time. */

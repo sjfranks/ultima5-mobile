@@ -122,6 +122,8 @@ export class Tactics {
   endAsked = false;
   /** The fight of the series under way, or null. */
   series: SeriesFight | null = null;
+  /** The members (by party place) who throw what they can (a dagger, spear, axe, oil) at foes past a neighbour: Throw on. */
+  throwing = new Set<number>();
 }
 
 /** A roll, to be thrown at the next moment the fight shows anything. */

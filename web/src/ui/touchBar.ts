@@ -12,9 +12,11 @@
  */
 
 import { treasureLies } from '../game/actors.ts';
+import { throwable } from '../game/combat.ts';
+import { planSwitch } from '../game/switchWeapon.ts';
 import { firesHere } from '../game/input.ts';
 import type { Game } from '../game/game.ts';
-import { END_TURN, K, Pad, UNDO_ACTION } from '../game/io.ts';
+import { END_TURN, K, Pad, TOUCH, UNDO_ACTION } from '../game/io.ts';
 import { CF } from '../game/game.ts';
 import { buttonLook, toneKey } from './buttonLook.ts';
 import { touchMode } from './directTouch.ts';
@@ -236,6 +238,8 @@ export class TouchBar {
 
   /** The hotbar's page (tactical turns), and whether it is a member's tactical turn at the prompt now. */
   private page = 0;
+  /** Whose turn the page was turned in (the hotbar's: each turn opens on the first). */
+  private pageTurn = -1;
   private tacticalTurn(): boolean {
     const g = this.g;
     const t = g.tactics;
@@ -252,22 +256,54 @@ export class TouchBar {
     const g = this.g;
     const t = g.tactics;
     const mixtures = g.s.mixtures.reduce((a: number, b: number) => a + b, 0);
+    const i = g.s.combatTurn;
+    const who = g.combat[i]?.who ?? -1;
+    // Switch Weapon (switchWeapon.ts): named by what it takes up - the member's ranged arms, or their melee.
+    const plan = who >= 0 ? planSwitch(g, who) : 'None';
+    const swap: Button =
+      typeof plan === 'string'
+        ? { label: 'Switch', code: 0x57, off: true }
+        : { label: `Switch to ${plan.to}`, code: 0x57, lines: ['To', plan.to === 'ranged' ? 'Range' : 'Melee'] };
+    // Throw (tactics.ts throwing): a dagger, spear or axe in hand - held to strike, or thrown at a foe tapped past a
+    // neighbour. (Oil is only ever thrown: no toggle.)
+    const throws = throwable(g, i).some((w) => w !== 0x13);
+    const on = t.throwing.has(who);
+    const toss: Button | null = throws
+      ? {
+          label: on ? 'Throw on' : 'Throw off',
+          code: -1,
+          main: on,
+          lines: ['Throw', on ? 'On' : 'Off'],
+          local: () => {
+            if (on) t.throwing.delete(who);
+            else t.throwing.add(who);
+            this.screen.fb.dirty = true;
+            this.shownKey = '';
+            this.update();
+          },
+        }
+      : null;
+    // The pause menu here only where it is not beside the pane already (paneTabs.ts).
+    const pause: Button[] = this.placed?.tabs ? [] : [{ label: 'Pause menu', code: Pad.Start, icon: 'menu' }];
     const pages: Button[][] = [
       [
         { label: 'Attack', code: Pad.X, icon: 'sword', main: true, die: 'd30' },
         { label: 'Cast', code: Pad.Y, badge: `x${mixtures}`, off: mixtures === 0 },
-        { label: 'Use', code: 0x55 },
-        { label: 'Pass', code: K.Space },
+        swap,
+        ...(toss ? [toss] : [{ label: 'Use', code: 0x55 }]),
         { label: 'Undo', code: UNDO_ACTION, icon: 'back', off: !t.undo },
       ],
       [
         { label: 'Act', code: Pad.A },
+        ...(toss ? [{ label: 'Use', code: 0x55 }] : []),
+        { label: 'Pass', code: K.Space },
         { label: 'Ready', code: 0x52 },
         { label: 'Ztats', code: 0x5a },
-        { label: 'Switch', code: 0x57 },
-        { label: 'Pause menu', code: Pad.Start, icon: 'menu' },
+        ...pause,
       ],
     ];
+    // Each member's turn opens on the first page.
+    if (this.pageTurn !== i) [this.page, this.pageTurn] = [0, i];
     if (this.page >= pages.length) this.page = 0;
     const turn = (d: number) => (): void => {
       this.page = (this.page + d + pages.length) % pages.length;
@@ -306,7 +342,7 @@ export class TouchBar {
     const inset = !p.barSide && row.primary !== undefined && buttons.length <= 4;
     const key =
       `${p.barSide ? 's' : 'b'}:${left ? 'l' : 'r'}:${inset ? 1 : 0}:${toneKey(tone)}:${size.toFixed(1)}:` +
-      buttons.map((b) => `${b.label}/${b.code}/${b.main ? 1 : 0}/${b.badge ?? ''}/${b.off ? 1 : 0}`).join(',');
+      buttons.map((b) => `${b.label}/${b.code}/${b.main ? 1 : 0}/${b.badge ?? ''}/${b.off ? 1 : 0}/${b.lines?.join('|') ?? ''}`).join(',');
     if (key === this.shownKey) return;
     this.shownKey = key;
     const root = this.root;
@@ -335,9 +371,10 @@ export class TouchBar {
     if (b.die) corner(b.die, 'right:4px;bottom:3px');
     el.setAttribute('aria-label', b.label);
     const look = buttonLook(tone, !!b.main);
-    const grow = b.local ? 0 : b.main && !side ? MAIN_WIDER : 1;
+    const narrow = !!b.local && !!b.icon; // the hotbar's page arrows
+    const grow = narrow ? 0 : b.main && !side ? MAIN_WIDER : 1;
     el.style.cssText =
-      `pointer-events:auto;touch-action:manipulation;flex:${side ? '0 0 auto' : b.local ? '0 0 26px' : `${grow} 1 0`};min-width:0;` +
+      `pointer-events:auto;touch-action:manipulation;flex:${side ? '0 0 auto' : narrow ? '0 0 26px' : `${grow} 1 0`};min-width:0;` +
       `max-width:${side ? 'none' : `${Math.round(96 * grow)}px`};display:flex;align-items:center;justify-content:center;` +
       // Across the foot, as deep as the bar leaves (deeper where the phone is tall), up to a thumb's breadth.
       `height:${side ? '52px' : `min(${BUTTON_DEEPEST}px, 100%)`};padding:0 ${count > 4 ? 2 : 4}px;box-sizing:border-box;border-radius:10px;` +
@@ -370,7 +407,12 @@ export class TouchBar {
         if (b.code !== UNDO_ACTION) return;
       }
       this.options.onPress();
-      this.options.send(b.code);
+      // A command's letter (Use, Ready, Ztats, Switch) typed as a tap types it (io.ts TOUCH): as a key, the controller
+      // input reads letters as the pad - W a step north, the rest nothing.
+      if (b.code >= 0x41 && b.code <= 0x5a && this.tacticalTurn()) {
+        this.g.touchKeys = [b.code];
+        this.options.send(TOUCH);
+      } else this.options.send(b.code);
       // The next buttons come with what the game does next.
       setTimeout(() => this.update(), 30);
     });

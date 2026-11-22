@@ -26,6 +26,8 @@ import {
   onMonsterSide,
   snapTargets,
   targetsFrom,
+  throwable,
+  throwTargets,
   weaponFor,
 } from '../game/combat.ts';
 import { CF, type Game } from '../game/game.ts';
@@ -39,6 +41,8 @@ import type { Screen } from './screen.ts';
 const E = HI;
 const SQ = 16 * E;
 
+/** Flaming oil: thrown, never held to strike (game/combat.ts THROWN). */
+const OIL = 0x13;
 const CHALK = '#f0ece0';
 /** The reach's mark: a soft pale line round it; an aim's, brass. */
 const EDGE = 'rgba(190, 215, 255, 0.5)';
@@ -726,6 +730,9 @@ const STEP_DIRS = [
 export function targetsOf(g: Game, i: number): Map<number, { x: number; y: number } | null> {
   const out = new Map<number, { x: number; y: number } | null>();
   if (g.tactics.left >= 1) for (const j of snapTargets(g, i)) out.set(j, null);
+  // Throw on - or oil in hand, which is only ever thrown: foes past a neighbour, in the throw's reach, thrown at from here
+  const throwing = g.tactics.throwing.has(g.combat[i].who) || throwable(g, i).includes(OIL);
+  if (g.tactics.left >= 1 && throwing) for (const j of throwTargets(g, i)) out.set(j, null);
   // a walk, then a blow: an action must be left for the blow - the nearest square it is struck from
   const spots = [...reachOf(g, i)]
     .filter(([, d]) => walkCost(g, i, d) + 1 <= g.tactics.left)

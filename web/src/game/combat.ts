@@ -2132,11 +2132,33 @@ export function snapTargets(g: Game, i: number): number[] {
   return [];
 }
 
-/** The hand member combatant `i` strikes foe `j` with (as snapTargets finds it): its weapon, or 0xff bare-handed. */
+/**
+ * The hand member combatant `i` strikes foe `j` with (as snapTargets finds it): its weapon - or, past a neighbour, the
+ * one thrown at it where it is pointed at (throwTargets) - else 0xff, bare-handed.
+ */
 export function weaponFor(g: Game, i: number, j: number): number {
   const c = g.combat[i];
   const hands = [0, 2, 3].map((h) => g.s.members[c.who].equips[h]).filter((w) => strikes(g, w));
-  return hands.find((w) => reachesFoe(g, i, w, j, false)) ?? 0xff;
+  return hands.find((w) => reachesFoe(g, i, w, j, false)) ?? hands.find((w) => reachesFoe(g, i, w, j, true)) ?? 0xff;
+}
+
+/** What member combatant `i` holds that can be thrown now: a dagger, flask of oil, spear or throwing axe - not the last kept. */
+export function throwable(g: Game, i: number): number[] {
+  const c = g.combat[i];
+  if (!c || (c.flags & CF.Player) === 0) return [];
+  return [2, 3].map((h) => g.s.members[c.who].equips[h]).filter((w) => THROWN.includes(w) && strikes(g, w) && !keepsLastThrown(g, w));
+}
+
+/**
+ * The foes member combatant `i` can throw at from where they stand (tactics: Throw on): past a neighbour, within the
+ * weapon's range, along a clear line - as Attack throws at a foe pointed at. (A neighbour is struck from the hand.)
+ */
+export function throwTargets(g: Game, i: number): number[] {
+  const hands = throwable(g, i);
+  const out: number[] = [];
+  for (let j = 0; j < 0x20; j++)
+    if (j !== i && standingFoe(g, j) && between(g, i, j) > 1 && hands.some((w) => reachesFoe(g, i, w, j, true))) out.push(j);
+  return out;
 }
 
 /** The foes member combatant `i` could strike from (x, y), a step away (tactics: a walk, then a blow). */

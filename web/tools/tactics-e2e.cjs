@@ -106,6 +106,36 @@ async function game(browser, url, touch = true) {
     });
   await said();
   const logText = () => p.evaluate(() => window.__said);
+  // Pass: the bar's own, or on the hotbar's second page (turned to, pressed; the next turn opens on the first)
+  const pass = async () => {
+    const button = p.locator('button[aria-label="Pass"]:visible');
+    const next = p.locator('button[aria-label=">"]:visible');
+    await button.or(next).first().waitFor({ timeout: 15000 });
+    // (a page turned on the last member's buttons, still shown as the next turn comes, is turned back by it: again)
+    for (let k = 0; k < 5 && !(await button.count()); k++) {
+      await next.tap();
+      await p.waitForTimeout(300);
+    }
+    await button.tap({ timeout: 10000 }).catch(async (e) => {
+      console.log(
+        'PASS STATE',
+        await view(() =>
+          JSON.stringify({
+            prompt: window.u5.g.commandPrompt,
+            turn: window.u5.g.s.combatTurn,
+            t: window.u5.g.tactics.turn,
+            left: window.u5.g.tactics.left,
+            waiting: window.u5.screen.waiting,
+            won: window.u5.g.s.battleWon,
+            menu: window.u5.g.menuShown?.labels,
+            bar: document.querySelector('button[aria-label="Pass"]')?.parentElement?.style.display,
+          }),
+        ),
+      );
+      await shot('pass-fail');
+      throw e;
+    });
+  };
 
   // the turn: two actions, the squares in reach marked
   let s = await ready();
@@ -256,7 +286,7 @@ async function game(browser, url, touch = true) {
       continue;
     }
     // otherwise: walk toward the nearest foe, or pass
-    await p.locator('button[aria-label="Pass"]').tap();
+    await pass();
     await p.waitForTimeout(200);
   }
   // a spell aimed where the player chooses: the first tap aims (its flight and odds shown), the second casts
@@ -273,18 +303,33 @@ async function game(browser, url, touch = true) {
       }
       const avatar = await view(() => window.u5.g.combat[window.u5.g.s.combatTurn].who === 0 && window.u5.g.s.mixtures[1] > 0);
       if (!avatar || s.left < 1) {
-        await p.locator('button[aria-label="Pass"]').tap();
+        await pass();
         await p.waitForTimeout(250);
         continue;
       }
-      await p.locator('button[aria-label="Cast"]').tap();
+      // the hotbar's first page, where Cast is
+      if (!(await p.locator('button[aria-label="Cast"]:visible').count())) await p.locator('button[aria-label="<"]:visible').tap();
+      await p.locator('button[aria-label="Cast"]:visible').tap();
       await p.waitForTimeout(600);
       await p.keyboard.press('Enter'); // Magic missile, the list's first
-      await p.waitForFunction(() => window.u5.g.s.crosshair === 1, null, { timeout: 10000 }).catch(async (e) => {
-        console.log('CAST STATE', await view(() => JSON.stringify({ menu: window.u5.g.menuShown?.labels, prompt: window.u5.g.commandPrompt, said: window.u5.g.saidSince, turn: window.u5.g.s.combatTurn, left: window.u5.g.tactics.left })));
-        await shot('cast-fail');
-        throw e;
-      });
+      await p
+        .waitForFunction(() => window.u5.g.s.crosshair === 1, null, { timeout: 10000 })
+        .catch(async (e) => {
+          console.log(
+            'CAST STATE',
+            await view(() =>
+              JSON.stringify({
+                menu: window.u5.g.menuShown?.labels,
+                prompt: window.u5.g.commandPrompt,
+                said: window.u5.g.saidSince,
+                turn: window.u5.g.s.combatTurn,
+                left: window.u5.g.tactics.left,
+              }),
+            ),
+          );
+          await shot('cast-fail');
+          throw e;
+        });
       const aim = await view(() => {
         const g = window.u5.g;
         const foes = [];

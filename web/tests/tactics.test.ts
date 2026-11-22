@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attackCombat, blowOdds, hitNeed, roll, seriesFight } from '../src/game/combat.ts';
+import { attackCombat, blowOdds, combatantAt, hitNeed, roll, seriesFight, throwable, throwTargets } from '../src/game/combat.ts';
 import { CF, type Game } from '../src/game/game.ts';
 import { K, UNDO_ACTION } from '../src/game/io.ts';
 import { journeyOnward } from '../src/game/run.ts';
@@ -209,5 +209,44 @@ describe('tactical turns', () => {
       });
       expect([...seen!].sort(), f.title).toEqual([...f.foes].sort());
     }
+  });
+
+  it('throws a spear at a foe past a neighbour, within its reach; a sword throws nothing', async () => {
+    const { g, p } = await outside(6);
+    ratBeside(g);
+    const fight = fighter(g);
+    let checked = false;
+    p.next = () => {
+      const s = g.s;
+      const i = s.combatTurn;
+      const me = g.combat[i];
+      if (!checked && me.flags & CF.Player && g.commandPrompt === 'combat' && !s.crosshair) {
+        const m = s.members[me.who];
+        const rat = g.combat.findIndex((c) => c.flags & CF.Monster && !(c.flags & CF.Dead));
+        const r = g.combat[rat];
+        const kept = [m.equips[2], m.equips[3], r.x, r.y, s.actors[r.actor].x, s.actors[r.actor].y];
+        // the rat three squares off, in a straight line, the way clear
+        const spot = [0, -1, 1, -2, 2]
+          .map((dx) => ({ x: me.x + dx, y: me.y - 3 }))
+          .find((q) => q.y >= 0 && q.x >= 0 && q.x < 11 && combatantAt(g, q.x, q.y) < 0);
+        if (spot) {
+          [r.x, r.y] = [spot.x, spot.y];
+          [s.actors[r.actor].x, s.actors[r.actor].y] = [spot.x, spot.y];
+          m.equips[2] = 0x15; // a spear (reach 5)
+          m.equips[3] = 0xff;
+          s.equipment[0x15] = 2;
+          expect(throwable(g, i)).toEqual([0x15]);
+          expect(throwTargets(g, i)).toContain(rat);
+          m.equips[2] = 0x17; // a short sword: nothing to throw
+          expect(throwable(g, i)).toEqual([]);
+          expect(throwTargets(g, i)).toEqual([]);
+          checked = true;
+        }
+        [m.equips[2], m.equips[3], r.x, r.y, s.actors[r.actor].x, s.actors[r.actor].y] = kept;
+      }
+      return fight();
+    };
+    await attackCombat(g, 1);
+    expect(checked).toBe(true);
   });
 });

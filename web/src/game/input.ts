@@ -476,14 +476,21 @@ export async function getCommandKey(g: Game, where: Game['commandPrompt'], idle?
       // Enter is A too, but for Classic input in a dungeon, where it turns the party about as in 1988.
       const turns = where === 'dungeon' && g.options.input !== 'controller';
       if (k === Pad.A || k === K.Tab || (k === K.Enter && !turns)) key = await menu.commandMenu(g);
-      // B passes; on a won field it leaves, as Escape does, there being nothing to pass for - unless treasure lies
-      // there still, which B must not walk away from by accident (Leave combat, at the head of the menu, does it on
-      // purpose), or the field is one that cannot be left (Doom's last room), where B is the only pass there is.
+      // B passes; on a won field it leaves, as Escape does, there being nothing to pass for - taking what lies there
+      // first (Loot and Leave), unless set to leave it - or the field is one that cannot be left (Doom's last room),
+      // where B is the only pass there is.
       // (A B on the heels of one that backed out of a menu or a page is that press again, a hand's bounce or a
       // double tap: ignored, not a turn passed - the port's.)
       else if (k === Pad.B && (g.p.now?.() ?? -Infinity) - g.backAt < BACK_TWICE) continue;
-      else if (k === Pad.B)
-        key = where === 'combat' && g.s.battleWon !== 0 && !(g.s.combatFlags & 0x80) && !treasureLies(g) ? K.Escape : K.Space;
+      else if (k === Pad.B && where === 'combat' && g.s.battleWon !== 0 && !(g.s.combatFlags & 0x80) && treasureLies(g)) {
+        // Exit, with something lying on the field won: Loot and Leave (loot.ts) - the party leaves once all of it is
+        // taken, else stays, told what is left - or, set so (Exit: Just leave), left as it is.
+        if (g.options.exitLoots) {
+          const { lootField, lootOffer } = await import('./loot.ts');
+          // (nobody able to take it - all asleep: left as it is)
+          key = lootOffer(g) !== 'show' ? K.Escape : (await lootField(g)) ? K.Escape : 0;
+        } else key = K.Escape;
+      } else if (k === Pad.B) key = where === 'combat' && g.s.battleWon !== 0 && !(g.s.combatFlags & 0x80) ? K.Escape : K.Space;
       // X: attack, wherever the party is - Fire, aboard a ship or beside a cannon, as the guns are the attack there.
       else if (k === Pad.X) {
         key = where !== 'combat' && firesHere(g) ? 0x46 : 0x41;

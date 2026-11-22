@@ -11,6 +11,7 @@
  * Shown on a touch screen (or once a finger has touched one); a mouse and keyboard never see it.
  */
 
+import { treasureLies } from '../game/actors.ts';
 import { firesHere } from '../game/input.ts';
 import type { Game } from '../game/game.ts';
 import { END_TURN, K, Pad, UNDO_ACTION } from '../game/io.ts';
@@ -33,6 +34,8 @@ interface Button {
   off?: boolean;
   /** Done here, not sent to the game (the hotbar's pages). */
   local?: () => void;
+  /** Its words as shown, on lines of their own, where the label would not fit on one (Loot & Exit as Loot, Exit). */
+  lines?: string[];
 }
 
 /**
@@ -183,7 +186,11 @@ export class TouchBar {
         return {
           primary: { label: 'Act', code: Pad.A, main: true },
           middle: [
-            { label: fight && g.s.battleWon !== 0 ? 'Exit' : 'Pass', code: Pad.B },
+            {
+              label: fight && g.s.battleWon !== 0 ? (g.options.exitLoots && treasureLies(g) ? 'Loot & Exit' : 'Exit') : 'Pass',
+              code: Pad.B,
+              ...(fight && g.s.battleWon !== 0 && g.options.exitLoots && treasureLies(g) ? { lines: ['Loot', 'Exit'] } : {}),
+            },
             { label: 'Cast', code: Pad.Y },
             fire ? { label: 'Fire', code: Pad.X } : { label: 'Attack', code: Pad.X, icon: 'sword' },
             ...pause,
@@ -316,7 +323,7 @@ export class TouchBar {
     const el = document.createElement('button');
     el.type = 'button';
     if (b.icon) el.appendChild(pixelIcon(b.icon, Math.round(size * 1.6)));
-    else el.textContent = b.label;
+    else el.textContent = b.lines ? b.lines.join('\n') : b.label;
     // The hotbar's corners: a count, the die it rolls - in the bar's letters, smaller.
     const corner = (text: string, where: string): void => {
       const span = document.createElement('span');
@@ -337,7 +344,8 @@ export class TouchBar {
       `border:2px solid ${look.border};color:${look.color};background:${look.background};` +
       // The words no smaller than the log's letters, in their face.
       `font:${size.toFixed(1)}px/1 ${FACE};letter-spacing:0;` +
-      'white-space:nowrap;overflow:hidden;text-overflow:clip;-webkit-tap-highlight-color:transparent;' +
+      (b.lines ? 'white-space:pre;text-align:center;line-height:1.2;' : 'white-space:nowrap;') +
+      'overflow:hidden;text-overflow:clip;-webkit-tap-highlight-color:transparent;' +
       'box-shadow:0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.14);position:relative;' +
       (b.off ? 'filter:grayscale(1) brightness(0.6);' : '');
     const lit = (on: boolean): void => {

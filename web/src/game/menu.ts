@@ -2146,6 +2146,12 @@ export function gameplayLines(g: Game): Setting[] {
       act: () => void (o.tacticalTurns = !o.tacticalTurns),
     },
     {
+      // B on a won field (input.ts getCommandKey): Loot and Leave (loot.ts), or the field left as it is.
+      label: `Exit: ${o.exitLoots ? 'Loot & leave' : 'Just leave'}`,
+      note: 'A fight won: Exit takes what lies there first, or leaves it.',
+      act: () => void (o.exitLoots = !o.exitLoots),
+    },
+    {
       // Snap attacks (settings.ts autoAim, its name once Auto aim).
       label: `Snap attacks: ${onOff(o.autoAim)}`,
       note: 'X (keyboard Q or C), or walking into a foe, strikes it, no crosshair.',

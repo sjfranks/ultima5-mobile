@@ -463,10 +463,7 @@ export class TacticsView {
     }
     if (blow && armour) {
       const left = blow.value - armour.value;
-      lines.push(
-        `Damage (d${blow.sides} - d${armour.sides}): ${blow.value} - ${armour.value}` +
-          (left > 0 ? ` = ${left}` : ' - grazed!'),
-      );
+      lines.push(`Damage (d${blow.sides} - d${armour.sides}): ${blow.value} - ${armour.value}` + (left > 0 ? ` = ${left}` : ' - grazed!'));
     } else if (blow) lines.push(`Damage (d${blow.sides}): ${blow.value}`);
     else if (armour) lines.push(`Armour (d${armour.sides}): ${armour.value}`);
     if (!lines.length) return;

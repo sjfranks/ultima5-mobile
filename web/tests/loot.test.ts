@@ -5,6 +5,7 @@ import { K, Pad } from '../src/game/io.ts';
 import { lootField, lootOffer } from '../src/game/loot.ts';
 import { AN_SANCT } from '../src/game/magic.ts';
 import { commandMenu } from '../src/game/menu.ts';
+import { getCommandKey } from '../src/game/input.ts';
 import { journeyOnward } from '../src/game/run.ts';
 import { Status } from '../src/game/save.ts';
 import { newGame } from './helpers.ts';
@@ -259,5 +260,23 @@ describe('Loot and Leave', () => {
     setActor(g, 4, 2, 2, 7, 7, 0, 12);
     p.next = () => (g.menuShown!.labels[g.menuShown!.at] === 'Loot and Leave' ? Pad.A : K.Down);
     expect(await commandMenu(g)).toBe(K.Escape);
+  });
+
+  it('is what Exit (B) does on a won field with something lying there - or, set to, the field is just left', async () => {
+    const { g, p } = won();
+    const s = g.s;
+    setActor(g, 4, 2, 2, 7, 7, 0, 12); // twelve gold
+    const gold = s.gold;
+    p.next = () => Pad.B;
+    expect(await getCommandKey(g, 'combat')).toBe(K.Escape);
+    expect(s.gold).toBe(gold + 12);
+    expect(s.actors[4].tile).toBe(0);
+    // Exit: Just leave - the gold left lying
+    g.options.exitLoots = false;
+    setActor(g, 4, 2, 2, 7, 7, 0, 12);
+    g.backAt = -Infinity;
+    expect(await getCommandKey(g, 'combat')).toBe(K.Escape);
+    expect(s.gold).toBe(gold + 12);
+    expect(s.actors[4].tile).not.toBe(0);
   });
 });

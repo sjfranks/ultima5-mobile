@@ -92,6 +92,11 @@ export interface Options {
    */
   tacticalTurns: boolean;
   /**
+   * What B (the touch bar's Exit) does on a won field with something lying there to take (the tactics fork's): Loot
+   * and Leave (loot.ts), everything taken and the field left; off, the field left as it is, as Leave combat leaves it.
+   */
+  exitLoots: boolean;
+  /**
    * Battery saver (the port's): the map rests - its water, its figures, the cursor - once a minute has gone by with
    * nothing pressed, until the next press (screen.ts waitKey). Off, it goes on as ever.
    */
@@ -284,6 +289,7 @@ export const DEFAULTS: Options = {
   hand: 'left',
   confirmFight: true,
   tacticalTurns: true,
+  exitLoots: true,
   batterySaver: false,
   snapTargets: true,
   maxInput: 'medium',
@@ -350,6 +356,7 @@ export function normaliseOptions(from: Saved): Partial<Options> {
   if (saved.hand !== undefined && !HANDS.includes(saved.hand)) delete saved.hand;
   if (saved.confirmFight !== undefined && typeof saved.confirmFight !== 'boolean') delete saved.confirmFight;
   if (saved.tacticalTurns !== undefined && typeof saved.tacticalTurns !== 'boolean') delete saved.tacticalTurns;
+  if (saved.exitLoots !== undefined && typeof saved.exitLoots !== 'boolean') delete saved.exitLoots;
   if (saved.batterySaver !== undefined && typeof saved.batterySaver !== 'boolean') delete saved.batterySaver;
   if (saved.snapTargets !== undefined && typeof saved.snapTargets !== 'boolean') delete saved.snapTargets;
   if (saved.maxInput !== undefined && !INPUT_PACE_NAMES.includes(saved.maxInput)) delete saved.maxInput;

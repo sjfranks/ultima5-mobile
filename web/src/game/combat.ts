@@ -20,7 +20,18 @@ import { borderTitle, clearBorderTitle, commandPrompt, drawVitals, invertMember,
 import { liftDungeonMap } from './dungeonMap.ts';
 import { CF, Game } from './game.ts';
 import { bumpCommand, corpseBlocks, foesAbout, isLoot, NOT_NOW } from './bumpAct.ts';
-import { bumpInto, getChar, getCharYN, getCommandKey, getHours, lastKeyTapped, queueKeys, selectDirection, typedAhead, upOrDown } from './input.ts';
+import {
+  bumpInto,
+  getChar,
+  getCharYN,
+  getCommandKey,
+  getHours,
+  lastKeyTapped,
+  queueKeys,
+  selectDirection,
+  typedAhead,
+  upOrDown,
+} from './input.ts';
 import { restOutcome, restTimer } from './rest.ts';
 import { atOf, K, Pad } from './io.ts';
 import { earnedLevel, Status } from './save.ts';

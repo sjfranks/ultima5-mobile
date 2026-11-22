@@ -870,35 +870,25 @@ export class DirectTouch {
   }
 
   /**
-   * A tap in a tactical turn (game/tactics.ts), whose two actions a tap may spend both of: a foe in reach struck, as
-   * ever; a foe within a walk, walked to and struck - a move and a blow, so always marked first and done at a second
-   * tap on it; any other square walked to at once - the whole way where the turn's moves reach it, else as far toward
-   * it as they go - each move as far as the member's dexterity takes them.
+   * A tap in a tactical turn (game/tactics.ts), whose two actions a tap may spend both of, at once: a foe in reach
+   * struck; a foe within a walk walked to and struck (a move and a blow); any other square walked to - the whole way
+   * where the turn's moves reach it, else as far toward it as they go - each move as far as the member's dexterity
+   * takes them. The finger's mark (tacticalWay) shows which before the finger lifts.
    */
   private tacticalTap(square: { x: number; y: number }, i: number): void {
     const g = this.g;
     const c = g.combat[i];
-    const a = this.armed;
-    const marked = !!a && a.x === square.x && a.y === square.y && a.turn === i && a.fromX === c.x && a.fromY === c.y;
-    const mark = (way: Way): void => {
-      this.armed = { x: square.x, y: square.y, turn: i, fromX: c.x, fromY: c.y };
-      this.setWay(way);
-    };
     const arrow = (from: { x: number; y: number }, to: { x: number; y: number }): number => arrowToward(to.x - from.x, to.y - from.y);
     const j = combatantAt(g, square.x, square.y);
     const targets = targetsOf(g, i);
+    this.armed = null;
+    // A foe in reach, struck at once; one a walk away, walked to and struck - the finger's mark showed which, and how.
     if (j >= 0 && onMonsterSide(g, j) && targets.has(j)) {
       const step = targets.get(j)!;
-      if (step === null) {
-        if (g.options.confirmFight && !marked) return mark({ frame: 'view', steps: [], end: square, kind: 'foe' });
-        this.armed = null;
-        g.bumpFoe = { x: square.x, y: square.y, pointed: true };
-        return this.type(0x41);
-      }
-      const walk = pathOf(g, i, step.x, step.y);
-      if (!marked) return mark({ frame: 'view', steps: walk, end: square, kind: 'foe' });
-      this.armed = null;
       g.bumpFoe = { x: square.x, y: square.y, pointed: true };
+      this.setWay(null);
+      if (step === null) return this.type(0x41);
+      const walk = pathOf(g, i, step.x, step.y);
       return this.type(...walk.map((p, k) => arrow(k === 0 ? c : walk[k - 1], p)), 0x41);
     }
     // A square to walk to: walked to at once, a move at a time - the whole way, if the turn's moves reach it, else as far

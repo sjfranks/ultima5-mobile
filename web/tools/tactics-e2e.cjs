@@ -199,17 +199,13 @@ async function game(browser, url, touch = true) {
       }
     }
     if (!struck && far && s.left === 2) {
-      await tap(far.x, far.y);
-      const way = await view(() => window.u5.screen.wayShown?.() ?? null);
-      check(
-        way && way.kind === 'foe' && way.steps.length >= 1,
-        `a foe within a walk is marked first, its way shown (${way?.steps.length} squares)`,
-      );
-      await shot('3-marked-foe');
+      const from = [s.x, s.y];
       await tap(far.x, far.y);
       await p.waitForFunction(() => window.u5tactics.faces().length > 0 && window.u5tactics.faces().every((f) => f.landed), null, {
         timeout: 20000,
       });
+      const now = await view(([i]) => [window.u5.g.combat[i].x, window.u5.g.combat[i].y], s.i);
+      check(now[0] !== from[0] || now[1] !== from[1], 'one tap on a foe within a walk walks to it and strikes');
       const faces = await view(() => window.u5tactics.faces());
       const thrown = await view(() => window.u5.g.tactics.thrown.map((d) => d.value));
       await shot('4-dice');
@@ -225,7 +221,6 @@ async function game(browser, url, touch = true) {
       continue;
     }
     if (struck && !refused && near && s.left === 2) {
-      await tap(near.x, near.y);
       await tap(near.x, near.y);
       const n = await ready();
       if (n && n.i === s.i && n.left === 1) {
@@ -285,7 +280,11 @@ async function game(browser, url, touch = true) {
       await p.locator('button[aria-label="Cast"]').tap();
       await p.waitForTimeout(600);
       await p.keyboard.press('Enter'); // Magic missile, the list's first
-      await p.waitForFunction(() => window.u5.g.s.crosshair === 1, null, { timeout: 10000 });
+      await p.waitForFunction(() => window.u5.g.s.crosshair === 1, null, { timeout: 10000 }).catch(async (e) => {
+        console.log('CAST STATE', await view(() => JSON.stringify({ menu: window.u5.g.menuShown?.labels, prompt: window.u5.g.commandPrompt, said: window.u5.g.saidSince, turn: window.u5.g.s.combatTurn, left: window.u5.g.tactics.left })));
+        await shot('cast-fail');
+        throw e;
+      });
       const aim = await view(() => {
         const g = window.u5.g;
         const foes = [];

@@ -41,7 +41,8 @@ async function fights(kind: number, effects: 'modern' | 'classic', n: number, au
   for (let k = 1; k <= n; k++) {
     const { g, p } = newGame(k * 7919 + kind);
     journeyOnward(g);
-    Object.assign(g.options, { rules: effects, input: 'letters', autoCombat: auto ? 'all' : 'off' });
+    // 1988's one action a turn: these seeds play out its fights (tactical turns change no charm or sleep rule)
+    Object.assign(g.options, { rules: effects, input: 'letters', autoCombat: auto ? 'all' : 'off', tacticalTurns: false });
     const s = g.s;
     Object.assign(s, { mapId: 0, level: 0, x: 86, y: 110 });
     const foe = freeActor(g);

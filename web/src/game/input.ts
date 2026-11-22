@@ -27,6 +27,17 @@ const CURSOR_FRAMES = 4;
  */
 const typed: number[] = [];
 
+/** Keys still queued to be read (a tap's walk under way, ui/directTouch.ts): how many. */
+export function typedAhead(): number {
+  return typed.length;
+}
+
+/** Whether the key read last came from a tap or the queue (a tap's walk), not a key or button pressed. */
+let tapped = false;
+export function lastKeyTapped(): boolean {
+  return tapped;
+}
+
 /** Keys to be read next, before any the player presses (bump to act's command). */
 export function queueKeys(...keys: number[]): void {
   typed.push(...keys);
@@ -161,6 +172,7 @@ let pressed = false;
 async function rawKey(g: Game, idle?: () => void, literal = false, command = false): Promise<number> {
   pressed = false;
   const queued = typed.shift();
+  tapped = queued !== undefined;
   if (queued !== undefined) return queued;
   // Anything said for the Dialog setting's box shown before the player answers (merchantSpeech.ts).
   if (g.beforeRead) await g.beforeRead();
@@ -196,6 +208,7 @@ async function rawKey(g: Game, idle?: () => void, literal = false, command = fal
       const keys = g.touchKeys.splice(0);
       if (keys.length === 0) continue;
       typed.push(...keys.slice(1));
+      tapped = true;
       cursor(0x20);
       g.saidSince = '';
       return keys[0];

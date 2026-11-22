@@ -20,7 +20,7 @@ import { borderTitle, clearBorderTitle, commandPrompt, drawVitals, invertMember,
 import { liftDungeonMap } from './dungeonMap.ts';
 import { CF, Game } from './game.ts';
 import { bumpCommand, corpseBlocks, foesAbout, isLoot, NOT_NOW } from './bumpAct.ts';
-import { bumpInto, getChar, getCharYN, getCommandKey, getHours, queueKeys, selectDirection, upOrDown } from './input.ts';
+import { bumpInto, getChar, getCharYN, getCommandKey, getHours, lastKeyTapped, queueKeys, selectDirection, typedAhead, upOrDown } from './input.ts';
 import { restOutcome, restTimer } from './rest.ts';
 import { atOf, K, Pad } from './io.ts';
 import { earnedLevel, Status } from './save.ts';
@@ -831,7 +831,15 @@ async function monsterTurn(g: Game, moveOnly = false): Promise<void> {
   }
   if (c.who === 0x2d) s.actors[c.actor].b6 = 0;
   if (moveOnly) {
-    // the rest of a move: no blow, no spell, no wound mended - a step toward its mark, or none
+    // the rest of a move: no blow, no spell, no wound mended - a step toward its mark, or none; and none at all for a
+    // creature already beside a foe it can strike, which stands its ground there for its next turn
+    if (c.flags & CF.Monster && !(c.flags & (CF.F2 | CF.Charmed)) && g.data.bytes(0x159c, 0x30)[c.who] >= 1) {
+      for (let j = 0; j < 0x20; j++) {
+        const o = g.combat[j];
+        if (!o.flags || o.flags & (CF.Dead | CF.Invisible | CF.F4) || onMonsterSide(g, j)) continue;
+        if (between(g, s.combatTurn, j) === 1) return;
+      }
+    }
   } else if (c.flags & CF.F2) {
     if ((c.flags & CF.Player) === 0 && g.random(0, 3) === 3) c.hp++;
     woundedState(g, s.combatTurn);
@@ -3252,6 +3260,9 @@ async function takeTurn(g: Game): Promise<void> {
       // A member's action that rolled no dice - a step - can be taken back while the turn lasts: dice are final.
       t.undo = member && t.rolls === rolls && (t.left > 0 || t.steps > 0) ? before : null;
       if (t.endAsked || (t.left === 0 && t.steps === 0)) break;
+      // No actions left, and a tapped walk's last square walked: the turn is over - the move's spare squares are
+      // only for a walk by key or button, which can go on with them (or End).
+      if (member && t.left === 0 && lastKeyTapped() && typedAhead() === 0) break;
       countSides(g);
       if (s.dx === 0 || s.dy === 0) break;
       const c = g.combat[i];

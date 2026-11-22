@@ -4,7 +4,7 @@
  * Tactical turns (src/game/tactics.ts) in the game itself, in Chromium, by real taps on a phone's screen: a fight in an
  * arena, its squares marked and walked to (marked first, as Fight taps: Confirm has it), a step undone, a walk of two
  * squares, a foe a step off marked - its odds shown - and walked to and struck, each die landing on the face the rules
- * rolled, Undo refused once dice have rolled, End Turn asked through the game's own question; and the Pause menu's
+ * rolled and taken back by Undo, End Turn asked through the game's own question; and the Pause menu's
  * Tactical fights.
  *
  * Needs the dev server and the developer's own game files (gamedata/), which the installer's autoscan takes up:
@@ -71,7 +71,7 @@ async function game(browser, url, touch = true) {
         y: c?.y,
         left: t.left,
         turn: t.turn,
-        undo: !!t.undo,
+        undo: t.history.length > 0,
         member: !!(c && c.flags & 0x80),
         ready: g.commandPrompt === 'combat' && screen.waiting && t.turn === i,
         log: g.p.text ? '' : '',
@@ -201,7 +201,6 @@ async function game(browser, url, touch = true) {
       s.i,
     );
     const far = targets.find((t) => t.step);
-    const near = targets.find((t) => !t.step);
     // past one move: one tap walks the whole way, both moves
     if (!walkedFar && s.left === 2) {
       const goal = await view(([i]) => {
@@ -248,21 +247,23 @@ async function game(browser, url, touch = true) {
         `the dice are the rules' rolls (${thrown.join(', ')})`,
       );
       struck = true;
-      continue;
-    }
-    if (struck && !refused && near && s.left === 2) {
-      await tap(near.x, near.y);
-      const n = await ready();
-      if (n && n.i === s.i && n.left === 1) {
-        // the fight as it stands: everyone's place and hit points, the actions left
-        const board = () =>
-          view(() => JSON.stringify([window.u5.g.tactics.left, window.u5.g.combat.map((c) => [c.x, c.y, c.hp, c.flags])]));
-        const before = await board();
-        await p.locator('button[aria-label="Undo"]').tap();
-        await p.waitForTimeout(400);
-        const log = await logText();
-        check((await board()) === before, 'Undo after a roll changes nothing');
-        check(/Dice are final!/.test(log), 'and says so: dice are final');
+      // Undo, once the dice are down: the walk and the blow, taken back as one - across the turns since, if any
+      if (await ready()) {
+        await p.locator('button[aria-label="Undo"]:visible').first().tap();
+        let back = null;
+        for (let k = 0; k < 40; k++) {
+          await p.waitForTimeout(150);
+          back = await view(([i]) => {
+            const { g } = window.u5;
+            const c = g.combat[i];
+            return { turn: g.s.combatTurn, x: c.x, y: c.y, left: g.tactics.left };
+          }, s.i);
+          if (back.turn === s.i && back.x === from[0] && back.y === from[1] && back.left === 2) break;
+        }
+        check(
+          back.turn === s.i && back.x === from[0] && back.y === from[1] && back.left === 2,
+          `Undo takes back the walk and the blow, dice and all (${JSON.stringify(back)})`,
+        );
         refused = true;
       }
       continue;
@@ -355,7 +356,7 @@ async function game(browser, url, touch = true) {
   }
   check(walkedFar, 'a member walked past one move with one tap');
   check(struck, 'a member walked to a foe and struck it');
-  check(refused, 'a member was refused an undo after a roll');
+  check(refused, 'a blow was taken back after its roll');
   check(ended, 'a member ended their turn');
   check(errors.length === 0, `no page errors${errors.length ? ': ' + errors.join('; ') : ''}`);
 

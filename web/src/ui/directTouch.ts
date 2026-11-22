@@ -19,6 +19,7 @@
  *   nothing is chosen); a tap outside the box backs out. A number's dial turns as a finger is dragged up and down
  *   over it.
  * - Where a way is asked, the square tapped from whoever acts gives it; where a member is, their line in the panel.
+ * - At the prompt, a member's line in the panel opens their equipment: Ready, for them (directTouch equipment).
  * - Upright, a tap on the log's pane opens the whole log over the map; the next tap anywhere closes it (on the log,
  *   that is all it does).
  * - At the harpsichord, a finger plays the key it comes down on, at once, and each it slides onto after, as a
@@ -795,12 +796,29 @@ export class DirectTouch {
         return this.key(arrowToward(dx, dy));
       }
       case 'command':
+        if (part === 'stats' || part === 'screen') {
+          const m = Math.floor(y / 8) - 1;
+          if (x >= 192 && y >= 8 && m >= 0 && m < g.s.partySize) return this.equipment(m);
+        }
         return this.command(x, y, square);
       case 'wait':
         return this.key(Pad.A);
       default:
         return;
     }
+  }
+
+  /**
+   * A member's line in the party panel, tapped at the prompt: what they have, to ready - Ready, for them. In a fight it
+   * is the member whose turn it is who readies (an action, as 1988's Ready): another's line shows their arms, Ztats'
+   * page of them, a look that spends nothing.
+   */
+  private equipment(m: number): void {
+    const g = this.g;
+    if (!g.inCombat) return this.type(0x52, 0x31 + m, K.Enter);
+    const c = g.combat[g.s.combatTurn];
+    if (c && c.flags & CF.Player && c.who === m) return this.type(0x52);
+    this.type(0x5a, 0x31 + m, K.Right);
   }
 
   /** A dungeon's first-person view, tapped: its left and right thirds turn, its middle steps ahead, its foot back. */

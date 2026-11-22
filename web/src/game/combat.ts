@@ -61,8 +61,9 @@ import { putAside } from './speech.ts';
 import { devMode } from '../devMode.ts';
 import { ammoHeld, spendOne } from './ammo.ts';
 import { shortArmNames } from './armNames.ts';
-import { putBack, rolled, sidesFor, snapshot, stepsFor, throwDice } from './tactics.ts';
+import { putBack, Rewind, rolled, type Snap, sidesFor, snapshot, stepsFor, throwDice } from './tactics.ts';
 import { END_TURN, UNDO_ACTION } from './io.ts';
+import { SeededRandom, TrueRandom } from './rng.ts';
 
 /** Enemy flags (u5d macros.h ENEMY_FLAG_*). */
 export const EF = {
@@ -3111,12 +3112,12 @@ async function playerTurn(g: Game): Promise<boolean> {
               break;
             }
             case UNDO_ACTION:
-              if (t.on && t.undo) {
+              if (t.on && t.history.length && (t.turn === s.combatTurn || s.battleWon !== 0)) {
                 t.undoAsked = true;
                 g.print('Undone\n');
                 return false;
               }
-              g.print(t.on ? 'Dice are final!\n' : 'What?\n');
+              g.print(t.on ? 'Nothing to undo!\n' : 'What?\n');
               done = false;
               break;
             case 0x30:
@@ -3232,29 +3233,47 @@ export const STEP_MS = 220;
 /**
  * A fighter's turn: one action, as in 1988 - or with tactical turns (tactics.ts), two, one after the other, the same
  * fighter's: a step, a blow, a spell, a pass, each one. The turn ends early where the fight does, where the fighter
- * falls, sleeps, leaves the field or is swallowed, or where End Turn is pressed; Undo puts back the turn's last action
- * if it drew no number (a step: dice are final). What a square does to whoever stands on it, a charm shaken off, are
- * the turn's, once, after (combatLoop), as ever.
+ * falls, sleeps, leaves the field or is swallowed, or where End Turn is pressed. Each member's action is kept in the
+ * fight's history first - a tapped walk, or a walk and the blow it ends in, as one - for Undo to put back: within the
+ * turn here, before it by a Rewind thrown to the fight's loop. `resume`, a turn put back to (Undo's), goes on from
+ * the actions it had. What a square does to whoever stands on it, a charm shaken off, are the turn's, once, after
+ * (combatLoop), as ever.
  */
-async function takeTurn(g: Game): Promise<void> {
+async function takeTurn(g: Game, resume: Snap | null = null): Promise<void> {
   const s = g.s;
   const t = g.tactics;
   const i = s.combatTurn;
-  // A field won is a field to loot, not a fight: a turn there is 1988's one action.
+  // A field won is a field to loot, not a fight: a turn there is 1988's one action. Undo there takes back the blow
+  // that won it (and whatever was taken since).
   if (!t.on || s.battleWon !== 0) {
     if (onMonsterSide(g, i)) await monsterTurn(g);
     else await playerTurn(g);
+    if (t.undoAsked) {
+      t.undoAsked = false;
+      const back = t.history.pop();
+      if (back) {
+        g.p.flushKeys();
+        throw new Rewind(back);
+      }
+    }
     return;
   }
   t.turn = i;
-  t.left = t.max;
-  t.steps = 0;
-  t.undo = null;
+  if (resume) {
+    t.turnNo = resume.turnNo;
+    t.left = resume.left;
+    t.steps = resume.steps;
+  } else {
+    t.turnNo++;
+    t.left = t.max;
+    t.steps = 0;
+  }
   t.endAsked = false;
-  let acted = false;
+  let acted = t.left < t.max;
+  // The last action left keys typed after it (a tapped walk's squares, the blow it ends in): the next is of it.
+  let continuing = false;
   try {
     while (t.left > 0 || t.steps > 0) {
-      const rolls = t.rolls;
       const before = snapshot(g, t.left, t.steps);
       const member = !onMonsterSide(g, i);
       t.stepped = false;
@@ -3262,20 +3281,30 @@ async function takeTurn(g: Game): Promise<void> {
       const spent = member ? await playerTurn(g) : (await monsterTurn(g, t.left === 0), true);
       if (t.undoAsked) {
         t.undoAsked = false;
-        const back = t.undo;
-        t.undo = null;
-        if (back) {
-          putBack(g, back);
-          t.left = back.left;
-          t.steps = back.steps;
-          g.viewDirty = 1;
-          updateFrame(g);
-          drawVitals(g);
-        }
+        const back = t.history.pop();
+        continuing = false;
+        if (!back) continue;
+        g.p.flushKeys();
+        // Before this turn: the fight's loop puts it back, and goes on from there (fightLoop).
+        if (back.turnNo !== t.turnNo) throw new Rewind(back);
+        putBack(g, back);
+        t.left = back.left;
+        t.steps = back.steps;
+        acted = t.left < t.max;
+        g.viewDirty = 1;
+        updateFrame(g);
+        drawVitals(g);
         continue;
       }
       if (!spent) continue;
       acted = true;
+      // A member's action, kept to take back: a step of a move under way, or the rest of a tapped walk, with the
+      // move's first.
+      if (member && !continuing && !(t.stepped && before.steps > 0)) {
+        t.history.push(before);
+        if (t.history.length > 400) t.history.shift();
+      }
+      continuing = member && typedAhead() > 0;
       // A walk goes a square at a time, the figure seen to go (Smooth motion glides it), not all at once.
       if (t.stepped) await g.p.sleep(STEP_MS);
       if (t.stepped) {
@@ -3290,8 +3319,6 @@ async function takeTurn(g: Game): Promise<void> {
         t.steps = 0;
         if (t.left > 0) t.left--;
       }
-      // A member's action that rolled no dice - a step - can be taken back while the turn lasts: dice are final.
-      t.undo = member && t.rolls === rolls && (t.left > 0 || t.steps > 0) ? before : null;
       if (t.endAsked || (t.left === 0 && t.steps === 0)) break;
       // No actions left, and a tapped walk's last square walked: the turn is over - the move's spare squares are
       // only for a walk by key or button, which can go on with them (or End).
@@ -3307,11 +3334,37 @@ async function takeTurn(g: Game): Promise<void> {
     t.turn = -1;
     t.left = 0;
     t.steps = 0;
-    t.undo = null;
     g.drawCombatMarks?.();
   }
   // A member's turn's end, once (combat.ts turnEnds: the ring, the fields, the protection's count), as 1988's.
   if (acted && !onMonsterSide(g, i) && g.combat[i].flags & CF.Player) turnEnds(g);
+}
+
+/**
+ * A turn, and any Undo past it: the fight put back to the action taken back - whose turn it was, every fighter's
+ * place, hit points and timer, the numbers' place - and that turn gone on with from there. The creatures' turns
+ * between come again as they fall (the same, unless what the party does differs).
+ */
+async function turnWithUndo(g: Game): Promise<void> {
+  let resume: Snap | null = null;
+  for (;;) {
+    try {
+      await takeTurn(g, resume);
+      return;
+    } catch (e) {
+      if (!(e instanceof Rewind)) throw e;
+      resume = e.to;
+      const won = g.s.battleWon;
+      putBack(g, resume);
+      // The victory taken back: the fight's tune again.
+      if (won !== 0 && g.s.battleWon === 0) musicForMap(g);
+      g.tactics.dice = [];
+      g.tactics.thrown = [];
+      g.viewDirty = 1;
+      updateFrame(g);
+      drawVitals(g);
+    }
+  }
 }
 
 /** COMBAT_0b94_MainLoop: turns by each combatant's timer until one side is gone; true if the battle was lost. */
@@ -3319,10 +3372,17 @@ export async function combatLoop(g: Game): Promise<boolean> {
   const t = g.tactics;
   t.on = g.options.tacticalTurns || t.series !== null;
   t.dice = [];
+  t.history = [];
+  t.turnNo = 0;
+  // Numbers whose place Undo can put back (tactics.ts): the browser's own can't be (a test's own mock is kept).
+  const own = g.rng;
+  if (t.on && own instanceof TrueRandom) g.rng = new SeededRandom((Math.random() * 0x100000000) | 0);
   try {
     return await fightLoop(g);
   } finally {
     t.on = false;
+    t.history = [];
+    g.rng = own;
   }
 }
 
@@ -3361,7 +3421,7 @@ async function fightLoop(g: Game): Promise<boolean> {
         passTime(g, 1);
       }
       s.blink = 1;
-      await takeTurn(g);
+      await turnWithUndo(g);
       s.d58a8[s.combatTurn] = 0xff;
       if (easedRules(g)) await shakeCharm(g, s.combatTurn);
       await castOut(g);

@@ -121,14 +121,21 @@ describe('tactical turns', () => {
     expect(thrown).toBe(0);
   });
 
-  it('takes back a step, but never a blow: dice are final', async () => {
+  it('takes back a step, a blow and a turn gone by: Undo goes back through the fight', async () => {
     const { g, p } = await outside(5);
     ratBeside(g);
     const fight = fighter(g);
+    const board = () => JSON.stringify([g.s.combatTurn, g.combat.map((c) => [c.x, c.y, c.hp, c.flags])]);
     let phase = 0;
     let at: [number, number] = [0, 0];
+    let mine = -1;
+    let turn = -1;
+    let beforeBlow = '';
+    let rolls = 0;
+    let beforeLeft = 0;
     let undone = false;
-    let refused = false;
+    let blowUndone = false;
+    let turnUndone = false;
     let movedOn = false;
     p.next = () => {
       const s = g.s;
@@ -138,6 +145,7 @@ describe('tactical turns', () => {
       if (member && phase === 0 && t.left === 2) {
         // a step away from the rat (west), then Undo
         at = [me.x, me.y];
+        mine = s.combatTurn;
         phase = 1;
         return K.Left;
       }
@@ -149,23 +157,52 @@ describe('tactical turns', () => {
       }
       if (member && phase === 2) {
         undone = me.x === at[0] && me.y === at[1] && t.left === 2;
+        // a rat that outlasts a blow: the fight goes on past it
+        for (const c of g.combat) if (c.flags & CF.Monster) c.hp = 200;
         phase = 3;
         return fight();
       }
-      if (member && phase === 3 && t.left === 1 && t.undo === null && p.log.includes('d30')) {
-        phase = 4;
+      if (member && phase === 3 && s.combatTurn === mine) {
+        if (t.rolls > rolls && t.turnNo === turn) {
+          // a blow struck, its dice rolled: taken back all the same
+          phase = 4;
+          return UNDO_ACTION;
+        }
+        // the fight as it stood before this action
+        beforeBlow = board();
+        beforeLeft = t.left;
+        rolls = t.rolls;
+        turn = t.turnNo;
+        return fight();
+      }
+      if (member && phase === 4) {
+        blowUndone = board() === beforeBlow && t.left === beforeLeft;
+        phase = 5;
+        return K.Space;
+      }
+      if (member && phase === 5 && s.combatTurn === mine && t.left === 1) {
+        phase = 6;
+        return K.Space;
+      }
+      if (member && phase === 5 && s.combatTurn === mine) return K.Space;
+      if (member && phase === 6 && t.left === 2 && t.history.length) {
+        // the next turn of the party's (the creatures' between): Undo goes back to the turn before it, one action left
+        turn = t.turnNo;
+        phase = 7;
         return UNDO_ACTION;
       }
-      if (phase === 4 && member) {
-        refused = p.log.includes('Dice are final!');
-        phase = 5;
+      if (member && phase === 7) {
+        turnUndone = s.combatTurn === mine && t.left === 1 && t.turnNo < turn;
+        phase = 8;
       }
       return fight();
     };
     await attackCombat(g, 1);
     expect(movedOn).toBe(true);
     expect(undone).toBe(true);
-    if (phase >= 5) expect(refused).toBe(true);
+    expect(blowUndone).toBe(true);
+    expect(phase).toBeGreaterThanOrEqual(8);
+    expect(turnUndone).toBe(true);
   });
 
   it("reckons a blow's odds as the rules roll it: 1 to the weapon's damage, less 1 to the armour", async () => {

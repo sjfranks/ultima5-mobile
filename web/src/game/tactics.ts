@@ -10,14 +10,17 @@
  *
  * What it adds is what a board game shows: the dice, thrown onto the field as each roll falls (the roll to hit on a
  * d30, the blow and the armour on the die that holds their range), the squares within the turn's reach and the foes
- * within the weapon's (ui/tacticsView.ts), the turn's hotbar on the touch bar (ui/touchBar.ts), End Turn, and Undo for
- * a step taken back while the turn lasts - never for anything that rolled: dice are final.
+ * within the weapon's (ui/tacticsView.ts), the turn's hotbar on the touch bar (ui/touchBar.ts), End Turn, and Undo -
+ * back through the fight, an action at a time (a tapped walk, or a walk and its blow, is one), past the creatures'
+ * turns to the member's before. The numbers are seeded (rng.ts SeededRandom), their place kept with each action, so
+ * an action taken back and made again rolls the same dice: Undo takes back a choice, not the luck.
  *
  * And a series of fights (the Pause menu's Tactical fights): 1988's creatures on its own arenas, fought under the
  * Classic rules by the party as it is, the game put back as it was after.
  */
 
 import type { Game } from './game.ts';
+import { SeededRandom } from './rng.ts';
 
 /** A die the rules rolled: its sides, the face that came up, whose it is, and what it was for. */
 export interface Die {
@@ -46,13 +49,26 @@ export function stepsFor(dex: number): number {
 export const DICE = [4, 6, 8, 10, 12, 20, 30] as const;
 export const sidesFor = (n: number): number | null => DICE.find((d) => d >= n) ?? null;
 
-/** What a turn so far can be put back to: the game's bytes as they were, and the actions there were then. */
-interface Snap {
+/**
+ * What the fight can be put back to: the game's bytes as they were (whose turn it was among them), the actions that
+ * turn had left then, the turn's count (takeTurn's), the numbers' place and each member's snap target.
+ */
+export interface Snap {
   s: Uint8Array;
   combat: Uint8Array;
   map: Uint8Array;
   left: number;
   steps: number;
+  turnNo: number;
+  rng: number | null;
+  snapMemory: number[];
+}
+
+/** Undo's way back past the turn under way: thrown out of it to the fight's loop (combat.ts), which puts it back. */
+export class Rewind extends Error {
+  constructor(readonly to: Snap) {
+    super('Undo');
+  }
 }
 
 /** A fight of the series: its arena (BRIT.CBT), the creatures (DATA.OVL's kinds) in the arena's own places. */
@@ -116,8 +132,10 @@ export class Tactics {
   thrown: Die[] = [];
   /** Dice the rules have rolled so far (an action that rolled none - a step - can be taken back). */
   rolls = 0;
-  /** What Undo puts back: the turn before its last action, if that action drew nothing. */
-  undo: Snap | null = null;
+  /** What Undo puts back, the latest last: the fight before each member's action (or tapped walk) of it. */
+  history: Snap[] = [];
+  /** The turns begun this fight (each fighter's, counted): a history's entry is of the turn it was taken in. */
+  turnNo = 0;
   undoAsked = false;
   endAsked = false;
   /** The fight of the series under way, or null. */
@@ -143,7 +161,16 @@ export async function throwDice(g: Game): Promise<void> {
 }
 
 export function snapshot(g: Game, left: number, steps: number): Snap {
-  return { s: g.s.b.slice(), combat: g.combatBytes.slice(), map: g.combatMap.slice(), left, steps };
+  return {
+    s: g.s.b.slice(),
+    combat: g.combatBytes.slice(),
+    map: g.combatMap.slice(),
+    left,
+    steps,
+    turnNo: g.tactics.turnNo,
+    rng: g.rng instanceof SeededRandom ? g.rng.state : null,
+    snapMemory: g.snapMemory.slice(),
+  };
 }
 
 /**
@@ -160,6 +187,8 @@ export function putBack(g: Game, snap: Snap): void {
   g.s.b.set(snap.s);
   g.combatBytes.set(snap.combat);
   g.combatMap.set(snap.map);
+  if (snap.rng !== null && g.rng instanceof SeededRandom) g.rng.state = snap.rng;
+  if (snap.snapMemory) g.snapMemory.splice(0, snap.snapMemory.length, ...snap.snapMemory);
 }
 
 /**

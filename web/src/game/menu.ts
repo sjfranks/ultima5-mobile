@@ -1369,10 +1369,12 @@ export function contextual(g: Game): Item[] {
     const take = { label: 'Loot and Leave', key: LOOT, enabled: loot === 'show' };
     out.unshift(...(loot === 'show' ? [take, leave] : loot === 'grey' ? [leave, take] : [leave]));
   }
-  // A tactical turn's own (tactics.ts): End turn, its actions left passed; Undo, the turn's last step taken back.
+  // A tactical turn's own (tactics.ts): End turn, its actions left passed; Undo, the fight's last action taken back.
   if (where === 'combat' && g.tactics.on && g.tactics.turn === s.combatTurn) {
     out.push({ label: 'End turn', key: END_TURN });
-    out.push({ label: 'Undo step', key: UNDO_ACTION, enabled: g.tactics.undo !== null });
+    out.push({ label: 'Undo', key: UNDO_ACTION, enabled: g.tactics.history.length > 0 });
+  } else if (where === 'combat' && g.tactics.on && s.battleWon !== 0 && g.tactics.history.length > 0) {
+    out.push({ label: 'Undo', key: UNDO_ACTION });
   }
   return out;
 }

@@ -69,6 +69,30 @@ export interface TouchBarOptions {
   mapShown: () => boolean;
 }
 
+/** A weapon in a word, for the hotbar's Equip (Switch Weapon): what the member would take up. */
+const WEAPON_WORD: Record<number, string> = {
+  0x10: 'Dagger',
+  0x11: 'Sling',
+  0x12: 'Club',
+  0x13: 'Oil',
+  0x14: 'Gauche',
+  0x15: 'Spear',
+  0x16: 'Axe',
+  0x17: 'Sword',
+  0x18: 'Mace',
+  0x19: 'Star',
+  0x1a: 'Bow',
+  0x1c: 'X-bow',
+  0x1e: 'Sword',
+  0x1f: 'Hammer',
+  0x20: 'Axe',
+  0x21: 'Sword',
+  0x22: 'Halberd',
+  0x24: 'Bow',
+  0x25: 'Sword',
+  0x26: 'Axe',
+};
+
 export class TouchBar {
   private readonly root: HTMLDivElement;
   private shownKey = '';
@@ -195,6 +219,10 @@ export class TouchBar {
             },
             { label: 'Cast', code: Pad.Y },
             fire ? { label: 'Fire', code: Pad.X } : { label: 'Attack', code: Pad.X, icon: 'sword' },
+            // A tactical fight won: Undo takes back the blow that won it (tactics.ts).
+            ...(fight && g.s.battleWon !== 0 && g.tactics.on && g.tactics.history.length
+              ? [{ label: 'Undo', code: UNDO_ACTION, icon: 'back' as const }]
+              : []),
             ...pause,
           ],
           mirror: true,
@@ -260,10 +288,12 @@ export class TouchBar {
     const who = g.combat[i]?.who ?? -1;
     // Switch Weapon (switchWeapon.ts): named by what it takes up - the member's ranged arms, or their melee.
     const plan = who >= 0 ? planSwitch(g, who) : 'None';
+    // Named by the weapon it takes up ("Equip Bow"), so what it does is plain at a glance.
+    const takes = typeof plan === 'string' ? undefined : plan.items.find((w) => w in WEAPON_WORD);
     const swap: Button =
-      typeof plan === 'string'
-        ? { label: 'Switch', code: 0x57, off: true }
-        : { label: `Switch to ${plan.to}`, code: 0x57, lines: ['To', plan.to === 'ranged' ? 'Range' : 'Melee'] };
+      typeof plan === 'string' || takes === undefined
+        ? { label: 'Equip', code: 0x57, off: true, lines: ['Equip', '-'] }
+        : { label: `Equip ${WEAPON_WORD[takes]}`, code: 0x57, lines: ['Equip', WEAPON_WORD[takes]] };
     // Throw (tactics.ts throwing): a dagger, spear or axe in hand - held to strike, or thrown at a foe tapped past a
     // neighbour. (Oil is only ever thrown: no toggle.)
     const throws = throwable(g, i).some((w) => w !== 0x13);
@@ -291,7 +321,7 @@ export class TouchBar {
         { label: 'Cast', code: Pad.Y, badge: `x${mixtures}`, off: mixtures === 0 },
         swap,
         ...(toss ? [toss] : [{ label: 'Use', code: 0x55 }]),
-        { label: 'Undo', code: UNDO_ACTION, icon: 'back', off: !t.undo },
+        { label: 'Undo', code: UNDO_ACTION, icon: 'back', off: !t.history.length },
       ],
       [
         { label: 'Act', code: Pad.A },
@@ -380,7 +410,8 @@ export class TouchBar {
       `height:${side ? '52px' : `min(${BUTTON_DEEPEST}px, 100%)`};padding:0 ${count > 4 ? 2 : 4}px;box-sizing:border-box;border-radius:10px;` +
       `border:2px solid ${look.border};color:${look.color};background:${look.background};` +
       // The words no smaller than the log's letters, in their face.
-      `font:${size.toFixed(1)}px/1 ${FACE};letter-spacing:0;` +
+      // (Lines longer than a button holds - "Halberd" - a size smaller, to fit.)
+      `font:${(size * Math.min(1, 5 / Math.max(5, ...(b.lines ?? []).map((l) => l.length)))).toFixed(1)}px/1 ${FACE};letter-spacing:0;` +
       (b.lines ? 'white-space:pre;text-align:center;line-height:1.2;' : 'white-space:nowrap;') +
       'overflow:hidden;text-overflow:clip;-webkit-tap-highlight-color:transparent;' +
       'box-shadow:0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.14);position:relative;' +

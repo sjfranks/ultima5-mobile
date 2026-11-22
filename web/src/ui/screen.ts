@@ -547,6 +547,8 @@ export class Screen implements Platform {
    */
   overPage: ((page: CanvasRenderingContext2D) => void) | null = null;
   overPageMoving: (() => boolean) | null = null;
+  /** A rectangle of the page (EGA pixels, x1 y1 x2 y2) overPage covers whole, its letters left out; null for none. */
+  overPageCovers: (() => [number, number, number, number] | null) | null = null;
   /** Whether the whole log is open over the map (upright, in play): a tap on the log opens it, and closes it. */
   logOpen = false;
   /** Which the pane under the map shows (upright, in play): the party or the log (paneTabs.ts chooses). */
@@ -764,7 +766,11 @@ export class Screen implements Platform {
     const letters: Letter[] = [...this.fb.lettersShown(), ...this.fb.revealing];
     const marks = this.fb.marksShown();
     this.readLog(letters, p);
-    this.drawLetters(ctx, p.blits, letters, marks, p.blits.length > 1);
+    const cover = this.overPageCovers?.() ?? null;
+    const shown = cover
+      ? letters.filter((l) => l.x < cover[0] || l.x >= cover[2] || l.y < cover[1] || l.y >= cover[3])
+      : letters;
+    this.drawLetters(ctx, p.blits, shown, marks, p.blits.length > 1);
     // The harpsichord's keyboard, through the blit that shows the map (or the whole screen).
     const over = p.blits.find((b) => b.part === 'view' || b.part === 'screen');
     // A tapped way (directTouch.ts), over the map, under anything the game puts up over it.

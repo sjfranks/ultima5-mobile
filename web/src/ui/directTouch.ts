@@ -384,12 +384,30 @@ export class DirectTouch {
     if (!c || (c.flags & CF.Player) === 0 || (square.x === c.x && square.y === c.y)) return null;
     const j = combatantAt(g, square.x, square.y);
     const foe = j >= 0 && onMonsterSide(g, j);
+    if (g.tactics.on && g.tactics.turn === i) return this.tacticalWay(square, i);
     if (foe && snapTargets(g, i).includes(j)) return { frame: 'view', steps: [], end: square, kind: 'foe' };
     const tile = g.s.actors[c.actor].tile;
     const open = (x: number, y: number): boolean => combatantAt(g, x, y) < 0 && arenaFree(g, tile, x, y);
     const found = wayTo(square.x, square.y, open, c.x, c.y);
     const kind = !found.length ? 'none' : foe ? 'foe' : open(square.x, square.y) ? 'walk' : 'into';
     return { frame: 'view', steps: found.slice(0, -1), end: square, kind };
+  }
+
+  /**
+   * The way a tap on `square` in a tactical turn takes (tacticalTap), marked as it will be walked: to a foe, the way
+   * to where it is struck from; else the walk itself (walkToward), to the square it ends on.
+   */
+  private tacticalWay(square: { x: number; y: number }, i: number): Way | null {
+    const g = this.g;
+    const j = combatantAt(g, square.x, square.y);
+    const targets = targetsOf(g, i);
+    if (j >= 0 && onMonsterSide(g, j) && targets.has(j)) {
+      const step = targets.get(j)!;
+      return { frame: 'view', steps: step === null ? [] : pathOf(g, i, step.x, step.y), end: square, kind: 'foe' };
+    }
+    const path = walkToward(g, i, square.x, square.y);
+    if (!path.length) return { frame: 'view', steps: [], end: square, kind: 'none' };
+    return { frame: 'view', steps: path.slice(0, -1), end: path[path.length - 1], kind: 'walk' };
   }
 
   /** The way marked for a finger at (x, y) of the screen (EGA pixels), at the command prompt. */
@@ -892,10 +910,9 @@ export class DirectTouch {
       this.type(...path.map((p, k) => arrow(k === 0 ? c : path[k - 1], p)));
       return;
     }
-    // No way there: a step toward it, as ever.
-    const tile = g.s.actors[c.actor].tile;
-    const open = (x: number, y: number): boolean => combatantAt(g, x, y) < 0 && arenaFree(g, tile, x, y);
-    this.key(firstStep(square.x, square.y, open, c.x, c.y) || arrowToward(square.x - c.x, square.y - c.y));
+    // No way nearer it: marked so, a moment, and nothing walked - as the finger's mark showed.
+    this.setWay({ frame: 'view', steps: [], end: square, kind: 'none' });
+    this.wayLinger();
   }
 
   // --- Walking --------------------------------------------------------------------

@@ -56,6 +56,7 @@ export class TacticsView {
   ) {
     screen.overPage = (ctx) => this.draw(ctx);
     screen.overPageMoving = () => this.moving();
+    screen.overPageCovers = () => this.trayRect();
     g.hooks.throwDice = (dice) => this.throwDice(dice);
     (window as unknown as { u5tactics: TacticsView }).u5tactics = this;
   }
@@ -123,8 +124,8 @@ export class TacticsView {
     if (i >= 0 && this.screen.waiting) this.drawTurn(ctx, i);
     const a = this.aiming();
     if (a >= 0 && this.screen.waiting) this.drawAim(ctx, a);
-    this.drawTray(ctx);
     ctx.restore();
+    this.drawTray(ctx);
   }
 
   private drawTurn(ctx: CanvasRenderingContext2D, i: number): void {
@@ -404,9 +405,7 @@ export class TacticsView {
       const t = newThrow(this.rnd, die.sides, die.value, [lane, 0], now + k * 60, die.foe);
       return Object.assign(t, { die, label: label(die) });
     });
-    // the tray clear of whom it is about: low on the field if they stand high, high if low
-    const target = g.combat[first.at];
-    this.tray = { title, dice: throws, result: null, top: !!target && target.y >= 5, hideAt: Infinity };
+    this.tray = { title, dice: throws, result: null, hideAt: Infinity };
     this.say(dice);
     const end = Math.max(...throws.map((t) => t.start + t.dur));
     await new Promise<void>((done) => {
@@ -514,7 +513,19 @@ export class TacticsView {
     }
   }
 
-  /** The tray, over the field: a frame in the chalk line, felt inside, the title, the dice in a row, their labels, the result. */
+  /** Where the tray stands (EGA pixels): the log's last lines, while it is up. */
+  private trayRect(): [number, number, number, number] | null {
+    if (!this.tray || this.g.s.mapId !== 0xff) return null;
+    const win = this.g.text.win;
+    const y2 = (win.bottom + 1) * 8;
+    return [win.left * 8, y2 - TRAY_H, (win.right + 1) * 8, y2];
+  }
+
+  /**
+   * The tray, in the log's place: the text window's last lines (the part of it a phone shows under the field) taken by
+   * a frame in the chalk line, felt inside, who rolls against whom, the dice in a row, their labels, the result - the
+   * log back as it was once the tray goes.
+   */
   private drawTray(ctx: CanvasRenderingContext2D): void {
     const tr = this.tray;
     if (!tr) return;
@@ -523,38 +534,41 @@ export class TacticsView {
       this.tray = null;
       return;
     }
-    const [x0, y0] = this.at(0, 0);
-    const w = 10 * SQ;
-    const h = 6 * SQ;
-    const x = x0 + SQ / 2;
-    const y = tr.top ? y0 + SQ / 4 : y0 + 11 * SQ - h - SQ / 4;
+    const [x1, y1, x2, y2] = this.trayRect()!;
+    const [x, y, w, h] = [x1 * E, y1 * E, (x2 - x1) * E, (y2 - y1) * E];
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
     ctx.fillStyle = '#000';
     ctx.fillRect(x, y, w, h);
     ctx.fillStyle = CHALK;
-    ctx.fillRect(x + E, y + E, w - 2 * E, E);
-    ctx.fillRect(x + E, y + h - 2 * E, w - 2 * E, E);
-    ctx.fillRect(x + E, y + E, E, h - 2 * E);
-    ctx.fillRect(x + w - 2 * E, y + E, E, h - 2 * E);
+    ctx.fillRect(x, y, w, E);
+    ctx.fillRect(x, y + h - E, w, E);
+    ctx.fillRect(x, y, E, h);
+    ctx.fillRect(x + w - E, y, E, h);
     ctx.fillStyle = FELT;
-    ctx.fillRect(x + 3 * E, y + 3 * E, w - 6 * E, h - 6 * E);
+    ctx.fillRect(x + 2 * E, y + 2 * E, w - 4 * E, h - 4 * E);
+    const small = 6 * E;
     const cell = 8 * E; // a letter's cell, as the game sets its own
-    const title = tr.title.length > 18 ? `${tr.title.slice(0, 17)}.` : tr.title;
-    this.text(ctx, title, x + w / 2, y + 5 * E, cell, CHALK, true);
+    const room = Math.floor((w - 4 * E) / small);
+    const title = tr.title.length > room ? `${tr.title.slice(0, room - 1)}.` : tr.title;
+    this.text(ctx, title, x + w / 2, y + 3 * E, small, CHALK, true);
     // the dice, in a row across the felt
-    ctx.save();
     ctx.beginPath();
-    ctx.rect(x + 3 * E, y + 3 * E, w - 6 * E, h - 6 * E);
+    ctx.rect(x + 2 * E, y + 2 * E, w - 4 * E, h - 4 * E);
     ctx.clip();
     const D = DIE * E;
-    const ground = y + 5 * E + cell + 2 * E + D * 0.62;
+    const ground = y + 3 * E + small + E + D * 0.5;
     for (const d of tr.dice) {
       if (now < d.start) continue;
       const s = throwAt(d, now);
-      const cx = x + w / 2 + s.x * D * 1.6;
-      const gy = ground + s.y * D * 0.6;
+      const cx = x + w / 2 + s.x * D * 1.55;
+      const gy = ground + s.y * D * 0.15;
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
       ctx.beginPath();
-      ctx.ellipse(cx, gy + D * 0.36, D * 0.42 * (1 - Math.min(0.5, s.z / 5)), D * 0.12, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx, gy + D * 0.4, D * 0.4 * (1 - Math.min(0.5, s.z / 5)), D * 0.08, 0, 0, Math.PI * 2);
       ctx.fill();
       const cv = this.dieCanvas;
       if (cv.width !== D) cv.width = cv.height = D;
@@ -562,14 +576,14 @@ export class TacticsView {
       dc.setTransform(1, 0, 0, 1, 0, 0);
       dc.clearRect(0, 0, D, D);
       const look = d.die.what === 'hit' && s.t >= 1 && d.die.need !== undefined && d.value >= d.die.need ? GOLD : d.look;
-      drawDie(dc, solid(d.sides), s.m, D / 2, D / 2, D * 0.44, look, (c, text, ink, edge) =>
+      drawDie(dc, solid(d.sides), s.m, D / 2, D / 2, D * 0.46, look, (c, text, ink, edge) =>
         this.text(c, text, -text.length * 16, -16, 32, ink, false, edge),
       );
-      ctx.drawImage(cv, Math.round(cx - D / 2), Math.round(gy - s.z * D * 0.8 - D / 2));
-      if (s.t >= 1) this.text(ctx, d.label, cx, gy + D * 0.42, 6 * E, CHALK, true, '#000');
+      ctx.drawImage(cv, Math.round(cx - D / 2), Math.round(gy - s.z * D * 0.35 - D / 2));
+      if (s.t >= 1 && !tr.result) this.text(ctx, d.label, cx, gy + D * 0.5 + E, small, CHALK, true, '#000');
     }
     ctx.restore();
-    if (tr.result) this.text(ctx, tr.result.text, x + w / 2, y + h - cell - 6 * E, cell, tr.result.colour, true, '#000');
+    if (tr.result) this.text(ctx, tr.result.text, x + w / 2, y + h - cell - 3 * E, cell, tr.result.colour, true, '#000');
   }
 }
 
@@ -578,14 +592,15 @@ interface Tray {
   title: string;
   dice: (Throw & { die: Die; label: string })[];
   result: { text: string; colour: string } | null;
-  top: boolean;
   hideAt: number;
 }
 
 /** How long a roll's result is held to be read (ms), before the blow it decides. */
 const RESULT_MS = 750;
 /** A die in the tray, across (EGA pixels): big enough for its numbers to be read. */
-const DIE = 48;
+const DIE = 44;
+/** The tray's height (EGA pixels): the log's last nine lines. */
+const TRAY_H = 72;
 const FELT = '#163a22';
 const GOOD = '#f8c840';
 const BAD = '#ff6a58';
@@ -638,39 +653,87 @@ export function reachOf(g: Game, i: number, most?: number): Map<number, number> 
   return out;
 }
 
-/** The way there, a square a step (the first step first), for a square reachOf gives. */
-export function pathOf(g: Game, i: number, x: number, y: number, most?: number): { x: number; y: number }[] {
-  const reach = reachOf(g, i, most);
-  const c = g.combat[i];
-  const out: { x: number; y: number }[] = [];
-  let at = { x, y };
-  let steps = reach.get(y * 16 + x);
-  if (steps === undefined) return [];
-  while (steps > 0) {
-    out.unshift(at);
-    if (steps === 1) break;
-    const prev = [
-      [0, -1],
-      [1, 0],
-      [0, 1],
-      [-1, 0],
-    ]
-      .map(([dx, dy]) => ({ x: at.x + dx, y: at.y + dy }))
-      .find((q) => reach.get(q.y * 16 + q.x) === steps! - 1);
-    if (!prev) break;
-    at = prev;
-    steps--;
+/**
+ * Whether ending a turn on arena square (x, y) hurts a member (game/combat.ts squareEffect): swamp, lava and fire, a
+ * poison, sleep or fire field.
+ */
+export function hazardAt(g: Game, x: number, y: number): boolean {
+  const t = g.combatMap[y * 32 + x];
+  if (t === 4 || t === 0x8f || t === 0xbc) return true;
+  for (let a = 0; a < 0x20; a++) {
+    const o = g.s.actors[a];
+    if (o.x === x && o.y === y && o.tile >= 0xe8 && o.tile <= 0xea) return true;
   }
-  void c;
+  return false;
+}
+
+/**
+ * The way to (x, y), a square a step (the first step first), within `most` steps (one move's, if not given): of the
+ * ways that fit, the one over the fewest hazards (hazardAt), and of those the shortest - around swamp and fields where
+ * there is room to, through them only where the square tapped is one, or there is no other way in reach. Empty where
+ * there is no way within `most`. What a tap walks and what a finger's mark shows, both.
+ */
+export function pathOf(g: Game, i: number, x: number, y: number, most?: number): { x: number; y: number }[] {
+  const c = g.combat[i];
+  const t = g.tactics;
+  const limit = most ?? (t.steps > 0 ? t.steps : t.left > 0 ? stepsFor(c.dex) : 0);
+  const tile = g.s.actors[c.actor].tile;
+  const open = (px: number, py: number): boolean =>
+    inArena(px, py) && !(px === c.x && py === c.y) && combatantAt(g, px, py) < 0 && arenaFree(g, tile, px, py);
+  if (!open(x, y)) return [];
+  const goal = y * 16 + x;
+  const least = hazardAt(g, x, y) ? 1 : 0;
+  // layer k: the squares k steps away by some way, each with the fewest hazards a way there of k steps crosses
+  const layers: Map<number, { hz: number; prev: number }>[] = [new Map([[c.y * 16 + c.x, { hz: 0, prev: -1 }]])];
+  let best: { k: number; hz: number } | null = null;
+  const hazard = new Map<number, boolean>();
+  const hazardous = (k: number): boolean => {
+    let h = hazard.get(k);
+    if (h === undefined) hazard.set(k, (h = hazardAt(g, k & 15, k >> 4)));
+    return h;
+  };
+  for (let k = 1; k <= limit; k++) {
+    const next = new Map<number, { hz: number; prev: number }>();
+    for (const [key, { hz }] of layers[k - 1])
+      for (const [dx, dy] of STEP_DIRS) {
+        const [nx, ny] = [(key & 15) + dx, (key >> 4) + dy];
+        if (!open(nx, ny)) continue;
+        const nk = ny * 16 + nx;
+        const h = hz + (hazardous(nk) ? 1 : 0);
+        const was = next.get(nk);
+        if (!was || h < was.hz) next.set(nk, { hz: h, prev: key });
+      }
+    layers.push(next);
+    const at = next.get(goal);
+    if (at && (!best || at.hz < best.hz)) best = { k, hz: at.hz };
+    if ((best && best.hz <= least) || next.size === 0) break;
+  }
+  if (!best) return [];
+  const out: { x: number; y: number }[] = [];
+  let key = goal;
+  for (let k = best.k; k >= 1; k--) {
+    out.unshift({ x: key & 15, y: key >> 4 });
+    key = layers[k].get(key)!.prev;
+  }
   return out;
 }
+
+const STEP_DIRS = [
+  [0, -1],
+  [1, 0],
+  [0, 1],
+  [-1, 0],
+] as const;
 
 /** The foes member combatant `i` reaches now (to null), and with two actions left, those it reaches after one step (to that step). */
 export function targetsOf(g: Game, i: number): Map<number, { x: number; y: number } | null> {
   const out = new Map<number, { x: number; y: number } | null>();
   if (g.tactics.left >= 1) for (const j of snapTargets(g, i)) out.set(j, null);
   // a walk, then a blow: an action must be left for the blow - the nearest square it is struck from
-  const spots = [...reachOf(g, i)].filter(([, d]) => walkCost(g, i, d) + 1 <= g.tactics.left).sort((a, b) => a[1] - b[1]);
+  const spots = [...reachOf(g, i)]
+    .filter(([, d]) => walkCost(g, i, d) + 1 <= g.tactics.left)
+    .map(([k, d]) => [k, d, hazardAt(g, k & 15, k >> 4) ? 1 : 0] as const)
+    .sort((a, b) => a[2] - b[2] || a[1] - b[1]);
   for (const [k] of spots) {
     const at = { x: k & 15, y: k >> 4 };
     for (const j of targetsFrom(g, i, at.x, at.y)) if (!out.has(j)) out.set(j, at);
@@ -689,9 +752,12 @@ export function turnReach(g: Game, i: number): number {
  * shortest way there as they go. Empty where there is no way.
  */
 export function walkToward(g: Game, i: number, x: number, y: number): { x: number; y: number }[] {
+  const reach = turnReach(g, i);
+  // within the turn's moves: the way there, round hazards where it can be
+  const direct = pathOf(g, i, x, y, reach);
+  if (direct.length) return direct;
   const far = reachOf(g, i, 30);
-  // where it can be stood on: the way there; else (a creature out of reach, water, a wall) the way to the open square
-  // nearest it - the turn walks as far along either as its moves go
+  // farther, or where it can't be stood on (a creature out of reach, water, a wall): toward the open square nearest it
   let goal = far.has(y * 16 + x) ? { x, y } : null;
   if (!goal) {
     let best = Infinity;
@@ -706,8 +772,13 @@ export function walkToward(g: Game, i: number, x: number, y: number): { x: numbe
     const c = g.combat[i];
     // nowhere nearer than where the member stands: no walk
     if (!goal || best >= (c.x - x) ** 2 + (c.y - y) ** 2) return [];
+    if (far.get(goal.y * 16 + goal.x)! <= reach) return pathOf(g, i, goal.x, goal.y, reach);
   }
-  return pathOf(g, i, goal.x, goal.y, 30).slice(0, turnReach(g, i));
+  const way = pathOf(g, i, goal.x, goal.y, 30).slice(0, reach);
+  // as far as the turn goes - but not to end it on a hazard the player never chose: back to the last safe square
+  let end = way.length;
+  while (end > 0 && hazardAt(g, way[end - 1].x, way[end - 1].y)) end--;
+  return end > 0 ? way.slice(0, end) : way;
 }
 
 export function installTacticsView(g: Game, screen: Screen): TacticsView {

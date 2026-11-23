@@ -717,8 +717,17 @@ export class TacticsView {
       dc.setTransform(1, 0, 0, 1, 0, 0);
       dc.clearRect(0, 0, D, D);
       const look = d.die.what === 'hit' && s.t >= 1 && d.die.need !== undefined && d.value >= d.die.need ? GOLD : d.look;
-      drawDie(dc, solid(d.sides), s.m, D / 2, D / 2, D * 0.46, look, (c, text, ink, edge) =>
-        this.text(c, text, -text.length * 16, -16, 32, ink, false, edge),
+      drawDie(
+        dc,
+        solid(d.sides),
+        s.m,
+        D / 2,
+        D / 2,
+        D * 0.46,
+        look,
+        (c, text, ink, edge) => this.text(c, text, -text.length * 16, -16, 32, ink, false, edge),
+        // no number while it tumbles: only the score, on the plaque, once it lands
+        true,
       );
       ctx.drawImage(cv, Math.round(cx - D / 2), Math.round(gy - s.z * D * 0.35 - D / 2));
       // landed: its number large on a plaque over it, to be read at a glance whatever the die (a d30's faces are small)

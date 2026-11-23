@@ -351,6 +351,8 @@ export function drawDie(
   look: DieLook,
   /** Letters `text` centred on (0, 0), its line 32 high (the game's own lettering: ui/tacticsView.ts); else a font's. */
   print?: (ctx: CanvasRenderingContext2D, text: string, ink: string, edge: string) => void,
+  /** Its faces left plain: no number on any (the tray's, its score shown on a plaque once landed). */
+  blank = false,
 ): void {
   const pv = s.verts.map((v) => apply(m, v));
   const scr = pv.map((p) => project(p));
@@ -374,7 +376,7 @@ export function drawDie(
     ctx.stroke();
     // the number, printed flat on the face: only the face turned most to the eye, as a die is read, and no larger than
     // the face holds - two figures drawn narrower - so it never spills onto the faces about it
-    if (i !== front) continue;
+    if (blank || i !== front) continue;
     const facing = dot(n, EYE);
     if (facing < 0.35) continue;
     const c = mul(

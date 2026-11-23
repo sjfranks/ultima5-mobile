@@ -32,6 +32,9 @@ export function typedAhead(): number {
   return typed.length;
 }
 
+/** Whether the key read last was Auto combat's (autocombat.ts), not the player's: no cursor reads it. */
+let autoKeyed = false;
+
 /** Whether the key read last came from a tap or the queue (a tap's walk), not a key or button pressed. */
 let tapped = false;
 export function lastKeyTapped(): boolean {
@@ -171,6 +174,7 @@ let pressed = false;
  */
 async function rawKey(g: Game, idle?: () => void, literal = false, command = false): Promise<number> {
   pressed = false;
+  autoKeyed = false;
   const queued = typed.shift();
   tapped = queued !== undefined;
   if (queued !== undefined) return queued;
@@ -178,6 +182,7 @@ async function rawKey(g: Game, idle?: () => void, literal = false, command = fal
   if (g.beforeRead) await g.beforeRead();
   g.learnRead();
   const auto = await autoCombatKey(g);
+  autoKeyed = auto !== 0;
   if (auto !== 0) return auto;
   pressed = true;
   const t = g.text;
@@ -473,7 +478,7 @@ export async function getCommandKey(g: Game, where: Game['commandPrompt'], idle?
     for (;;) {
       let k = await rawKey(g, idle, false, true);
       // A member's tactical turn: the field's cursor reads a key pressed (a tap's keys are a choice made already).
-      if (where === 'combat' && !tapped && g.hooks.tacticalKey) {
+      if (where === 'combat' && !tapped && !autoKeyed && g.hooks.tacticalKey) {
         k = g.hooks.tacticalKey(k);
         if (k === 0) continue;
       }

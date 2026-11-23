@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { attackCombat, blowOdds, combatantAt, hitNeed, roll, seriesFight, throwable, throwTargets } from '../src/game/combat.ts';
+import {
+  attackCombat,
+  blowOdds,
+  combatantAt,
+  hitNeed,
+  onMonsterSide,
+  roll,
+  seriesFight,
+  throwable,
+  throwTargets,
+} from '../src/game/combat.ts';
 import { CF, type Game } from '../src/game/game.ts';
 import { K, UNDO_ACTION } from '../src/game/io.ts';
 import { journeyOnward } from '../src/game/run.ts';
@@ -203,6 +213,39 @@ describe('tactical turns', () => {
     expect(blowUndone).toBe(true);
     expect(phase).toBeGreaterThanOrEqual(8);
     expect(turnUndone).toBe(true);
+  });
+
+  it('rolls a second attack in a turn at -5 to hit, but not the other hand of one attack', async () => {
+    const { g, p } = await outside(5);
+    ratBeside(g);
+    const fight = fighter(g);
+    const seen: { by: number; turnNo: number; left: number; penalty: number }[] = [];
+    g.hooks.throwDice = async (dice) => {
+      for (const d of dice)
+        if (d.what === 'hit' && !onMonsterSide(g, d.by))
+          seen.push({ by: d.by, turnNo: g.tactics.turnNo, left: g.tactics.left, penalty: d.penalty ?? 0 });
+    };
+    let tough = false;
+    p.next = () => {
+      if (!tough) {
+        // a rat that outlasts many blows: the party strikes it turn after turn
+        for (const c of g.combat) if (c.flags & CF.Monster) c.hp = 250;
+        tough = true;
+      }
+      if (seen.length > 40) throw new Error('enough seen');
+      return fight();
+    };
+    await attackCombat(g, 1).catch(() => {});
+    // by turn: the first action's blows (every hand) at no penalty, a later action's at -5
+    const turns = new Map<number, typeof seen>();
+    for (const r of seen) turns.set(r.turnNo, [...(turns.get(r.turnNo) ?? []), r]);
+    let second = 0;
+    for (const rolls of turns.values()) {
+      const firstLeft = rolls[0].left;
+      for (const r of rolls) expect(r.penalty).toBe(r.left === firstLeft ? 0 : 5);
+      if (rolls.some((r) => r.left !== firstLeft)) second++;
+    }
+    expect(second).toBeGreaterThan(0);
   });
 
   it("reckons a blow's odds as the rules roll it: 1 to the weapon's damage, less 1 to the armour", async () => {

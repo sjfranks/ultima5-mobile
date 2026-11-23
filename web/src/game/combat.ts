@@ -562,6 +562,10 @@ export async function monsterMagic(g: Game, i: number): Promise<boolean> {
   const c = g.combat[i];
   const kind = c.who;
   if (g.regalia === 0x1c || s.icon === 0x4e || (c.flags & CF.Player) !== 0) return false; // the Crown worn, or Negate Magic
+  // Tactical turns: a creature's gifts - a charm tried, a vanishing, a gating in - are 1988's chance a turn, tried with
+  // the turn's first action only (two tries a turn would double them); its other action is a blow or a step.
+  const t = g.tactics;
+  if (t.on && t.turn === i && t.left !== t.max) return false;
   const flags = enemyFlags(g, kind);
   if (flags & EF.Charm) {
     const t = g.random(0, 0x1f);
@@ -835,7 +839,9 @@ async function monsterTurn(g: Game, moveOnly = false): Promise<void> {
   const s = g.s;
   const c = g.combat[s.combatTurn];
   s.weapon = 0;
-  if (s.icon === 0x54 || (s.icon === 0x51 && g.random(0, 1) === 0) || (c.flags & CF.F4) !== 0) return;
+  // Quickness ('Q'): a creature loses one turn in two - its whole turn, with tactical turns (takeTurn rolls it once)
+  const slowed = g.tactics.on && g.tactics.turn === s.combatTurn ? g.tactics.slowed : s.icon === 0x51 && g.random(0, 1) === 0;
+  if (s.icon === 0x54 || (s.icon === 0x51 && slowed) || (c.flags & CF.F4) !== 0) return;
   if (c.flags & CF.Asleep) {
     // (The eased rules: one in ten, where 1988 woke a monster one turn in seventeen.)
     if (easedRules(g) ? g.random(0, 9) === 0 : g.random(0, 0x10) === 0x10) wake(g, s.combatTurn);
@@ -853,7 +859,9 @@ async function monsterTurn(g: Game, moveOnly = false): Promise<void> {
       }
     }
   } else if (c.flags & CF.F2) {
-    if ((c.flags & CF.Player) === 0 && g.random(0, 3) === 3) c.hp++;
+    // a wound mended now and then: once a turn, not once an action
+    const first = !g.tactics.on || g.tactics.turn !== s.combatTurn || g.tactics.left === g.tactics.max;
+    if ((c.flags & CF.Player) === 0 && first && g.random(0, 3) === 3) c.hp++;
     woundedState(g, s.combatTurn);
   } else {
     if (await monsterMagic(g, s.combatTurn)) return;
@@ -935,11 +943,25 @@ export function hitRoll(g: Game, target: number, attacker: number, _unused: numb
   if (sure) return true;
   const tv = stat(g, target, t);
   const av = stat(g, attacker, a);
-  const need = Math.trunc((tv - av + 0x1e) / 2);
+  const penalty = followUp(g, attacker);
+  const need = Math.trunc((tv - av + 0x1e) / 2) + penalty;
+  // Tactical turns: a blow struck (not a spell) is the turn's attack; a later action's is at -5 (followUp).
+  const tt = g.tactics;
+  if (tt.on && tt.turn === attacker && s.d588f === 0) tt.swung = true;
   const r = roll(g);
   // Tactical turns: the roll shown as it fell, on a d30 (tactics.ts).
-  rolled(g, { sides: 30, value: r, foe: onMonsterSide(g, attacker), what: 'hit', need, at: target, by: attacker });
+  rolled(g, { sides: 30, value: r, foe: onMonsterSide(g, attacker), what: 'hit', need, penalty, at: target, by: attacker });
   return need <= r;
+}
+
+/**
+ * Tactical turns: a blow in a later action of the turn than one that attacked already - a second attack - rolls at -5
+ * to hit (5 more needed). Every hand of one attack (a sword and a main gauche) is the same action: no penalty among
+ * them. Spells are not attacks.
+ */
+export function followUp(g: Game, attacker: number): number {
+  const t = g.tactics;
+  return t.on && t.turn === attacker && t.attacked && g.s.d588f === 0 ? 5 : 0;
 }
 
 /** What `attacker`'s roll to hit `target` with `weapon` must reach (as hitRoll), or null where it cannot miss. */
@@ -950,7 +972,7 @@ export function hitNeed(g: Game, target: number, attacker: number, weapon: numbe
     return Math.trunc((stat(g, target, Q.Int) - stat(g, attacker, Q.Int) + 0x1e) / 2);
   }
   if (weapon === 0x27 || weapon === 0x23 || weapon === 0x28) return null;
-  return Math.trunc((stat(g, target, Q.Dex) - stat(g, attacker, weapon) + 0x1e) / 2);
+  return Math.trunc((stat(g, target, Q.Dex) - stat(g, attacker, weapon) + 0x1e) / 2) + followUp(g, attacker);
 }
 
 /**
@@ -3267,6 +3289,9 @@ async function takeTurn(g: Game, resume: Snap | null = null): Promise<void> {
     t.turnNo++;
     t.left = t.max;
     t.steps = 0;
+    // Quickness: the creature's turn lost, or not - once for the turn (monsterTurn)
+    t.slowed = g.s.icon === 0x51 && onMonsterSide(g, i) && g.random(0, 1) === 0;
+    t.attacked = false;
   }
   t.endAsked = false;
   let acted = t.left < t.max;
@@ -3278,6 +3303,7 @@ async function takeTurn(g: Game, resume: Snap | null = null): Promise<void> {
       const member = !onMonsterSide(g, i);
       t.stepped = false;
       t.cursor = null;
+      t.swung = false;
       g.drawCombatMarks?.();
       const spent = member ? await playerTurn(g) : (await monsterTurn(g, t.left === 0), true);
       if (t.undoAsked) {
@@ -3299,6 +3325,8 @@ async function takeTurn(g: Game, resume: Snap | null = null): Promise<void> {
       }
       if (!spent) continue;
       acted = true;
+      // an action that struck a blow: the turn's attack - any later one's is a follow-up (followUp)
+      if (t.swung) t.attacked = true;
       // A member's action, kept to take back: a step of a move under way, or the rest of a tapped walk, with the
       // move's first.
       if (member && !continuing && !(t.stepped && before.steps > 0)) {

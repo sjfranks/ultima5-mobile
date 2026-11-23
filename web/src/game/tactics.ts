@@ -29,8 +29,9 @@ export interface Die {
   /** Thrown by a creature (red), or the party (blue). */
   foe: boolean;
   what: 'hit' | 'blow' | 'armour' | 'chance';
-  /** The roll to hit: what it needed to reach. */
+  /** The roll to hit: what it needed to reach - and of that, the follow-up's penalty (a second attack in a turn). */
   need?: number;
+  penalty?: number;
   /** Whom it is for (the target), and who rolled it (the attacker). */
   at: number;
   by: number;
@@ -62,6 +63,9 @@ export interface Snap {
   turnNo: number;
   /** The dice rolled by then (Tactics.rolls): none since, and what came after was a walk. */
   rolls: number;
+  /** The turn's attack made already, and Quickness's lost turn (Tactics.attacked, slowed). */
+  attacked?: boolean;
+  slowed?: boolean;
   rng: number | null;
   snapMemory: number[];
 }
@@ -82,7 +86,7 @@ export interface SeriesFight {
 }
 
 /**
- * The series, an orc band to a dragon. Creatures: 0x20 orc, 0x24 headless, 0x14 giant rat, 0x22 python, 0x16 giant
+ * The series, an orc band to a dragon, and fights of every kind of creature and ground after it. Creatures: 0x20 orc, 0x24 headless, 0x14 giant rat, 0x22 python, 0x16 giant
  * spider, 0x18 slime, 0x02 fighter, 0x01 bard, 0x00 mage, 0x21 skeleton, 0x17 ghost, 0x1c gazer, 0x29 troll, 0x23
  * ettin, 0x27 dragon. Arenas: 2 grass, 1 swamp, 12 the pirates' shore, 8 the towne's cobbles, 6 hills and mountains.
  */
@@ -117,6 +121,42 @@ export const SERIES: SeriesFight[] = [
     arena: 6,
     foes: [0x27, 0x29, 0x29, 0x23],
   },
+  {
+    title: 'The Boulder Maze',
+    text: 'Trolls and ettins throwing from the rocks, headless in the narrow ways between.',
+    arena: 0,
+    foes: [0x29, 0x29, 0x23, 0x24, 0x24, 0x24],
+  },
+  {
+    title: 'Deep Forest',
+    text: 'Wisps that vanish and gate in kin, gremlins and an insect swarm among the trees.',
+    arena: 5,
+    foes: [0x25, 0x25, 0x19, 0x19, 0x19, 0x1f, 0x1f],
+  },
+  {
+    title: 'Desert Sands',
+    text: "A sand trap, mongbats and crawlers in the dunes south of the Serpent's Hold.",
+    arena: 4,
+    foes: [0x28, 0x2c, 0x2c, 0x1d, 0x1d],
+  },
+  {
+    title: 'The Bridge',
+    text: 'Gargoyles holding the bridge, their spells loosed across the river, a reaper on the far bank.',
+    arena: 7,
+    foes: [0x1e, 0x1e, 0x1b, 0x02, 0x02],
+  },
+  {
+    title: 'Sea Battle',
+    text: 'On the deck, and what comes out of the water: a sea serpent, a squid, sharks.',
+    arena: 11,
+    foes: [0x12, 0x11, 0x13, 0x13],
+  },
+  {
+    title: 'The Storeroom',
+    text: "Mimics among the barrels, rot worms and a corpser in the dark of a towne's cellar.",
+    arena: 9,
+    foes: [0x1a, 0x1a, 0x2e, 0x2e, 0x2e, 0x2d],
+  },
 ];
 
 export class Tactics {
@@ -140,6 +180,12 @@ export class Tactics {
   turnNo = 0;
   undoAsked = false;
   endAsked = false;
+  /** Quickness ('Q'): whether this creature's turn is the one in two it loses (rolled once, at its start). */
+  slowed = false;
+  /** Whether the turn's fighter has attacked with an action of it already: a later one's roll to hit is at -5. */
+  attacked = false;
+  /** Whether the action under way has struck a blow (combat.ts hitRoll). */
+  swung = false;
   /** The fight of the series under way, or null. */
   series: SeriesFight | null = null;
   /**
@@ -176,6 +222,8 @@ export function snapshot(g: Game, left: number, steps: number): Snap {
     steps,
     turnNo: g.tactics.turnNo,
     rolls: g.tactics.rolls,
+    attacked: g.tactics.attacked,
+    slowed: g.tactics.slowed,
     rng: g.rng instanceof SeededRandom ? g.rng.state : null,
     snapMemory: g.snapMemory.slice(),
   };
@@ -197,6 +245,8 @@ export function putBack(g: Game, snap: Snap): void {
   g.combatMap.set(snap.map);
   if (snap.rng !== null && g.rng instanceof SeededRandom) g.rng.state = snap.rng;
   if (snap.rolls !== undefined) g.tactics.rolls = snap.rolls;
+  if (snap.attacked !== undefined) g.tactics.attacked = snap.attacked;
+  if (snap.slowed !== undefined) g.tactics.slowed = snap.slowed;
   if (snap.snapMemory) g.snapMemory.splice(0, snap.snapMemory.length, ...snap.snapMemory);
 }
 

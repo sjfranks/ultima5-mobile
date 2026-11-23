@@ -532,7 +532,8 @@ export class TacticsView {
     const blow = dice.find((d) => d.what === 'blow');
     const armour = dice.find((d) => d.what === 'armour');
     const chance = dice.find((d) => d.what === 'chance');
-    const title = hit ? `${by} attacks ${at}` : chance ? `${at}: poison?` : `${by} strikes ${at}`;
+    // a second attack in the turn: said in the title, its -5 already in the number needed
+    const title = hit ? `${by} attacks ${at}${hit.penalty ? ' -5' : ''}` : chance ? `${at}: poison?` : `${by} strikes ${at}`;
     const label = (d: Die): string =>
       d.what === 'hit' ? `To hit (${d.need ?? 0}+)` : d.what === 'blow' ? 'Blow' : d.what === 'armour' ? 'Armour' : '1 spares';
     // Settings' Dice: Off, the log only; Fast, thrown at twice the pace and read in less than half the time
@@ -600,6 +601,7 @@ export class TacticsView {
     for (const d of dice) {
       if (d.what === 'hit') {
         const hit = d.need === undefined || d.value >= d.need;
+        if (d.penalty) lines.push(`Second attack: -${d.penalty} to hit`);
         lines.push(`To hit (d30): ${d.value}${d.need !== undefined ? ` vs ${d.need}` : ''} - ${hit ? 'HIT!' : 'MISS!'}`);
       } else if (d.what === 'chance') {
         lines.push(`Poison (d${d.sides}): ${d.value} - ${d.value === 1 ? 'no poison' : 'POISONED!'}`);

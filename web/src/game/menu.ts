@@ -2156,6 +2156,12 @@ export function gameplayLines(g: Game): Setting[] {
       act: () => void (o.exitLoots = !o.exitLoots),
     },
     {
+      // The dice's tray (ui/tacticsView.ts): at their pace, quicker, or none - the log has each roll all the same.
+      label: `Dice: ${o.dice === 'fast' ? 'Fast' : o.dice === 'off' ? 'Off (log only)' : 'Normal'}`,
+      note: 'Tactical rolls: thrown, thrown quickly, or in the log only.',
+      act: () => void (o.dice = o.dice === 'normal' ? 'fast' : o.dice === 'fast' ? 'off' : 'normal'),
+    },
+    {
       // Snap attacks (settings.ts autoAim, its name once Auto aim).
       label: `Snap attacks: ${onOff(o.autoAim)}`,
       note: 'X (keyboard Q or C), or walking into a foe, strikes it, no crosshair.',

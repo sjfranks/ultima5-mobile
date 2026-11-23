@@ -34,7 +34,7 @@ import { CF, type Game } from '../game/game.ts';
 import { K, Pad, UNDO_ACTION } from '../game/io.ts';
 import { queueKeys } from '../game/input.ts';
 import { hitChance, stepsFor, walkCost, type Die } from '../game/tactics.ts';
-import { drawDie, GOLD, newThrow, solid, throwAt, type Throw } from './dice3d.ts';
+import { type DieLook, drawDie, GOLD, newThrow, solid, throwAt, type Throw } from './dice3d.ts';
 import { glyphPixel, readFont } from '../data/font.ts';
 import { HI, TILE_X, TILE_Y } from './framebuffer.ts';
 import type { Screen } from './screen.ts';
@@ -422,6 +422,22 @@ export class TacticsView {
     }
   }
 
+  /** A die's number on a plaque centred on (x, y): the game's letters, large, black edged in the die's colour. */
+  private plaque(ctx: CanvasRenderingContext2D, value: string, x: number, y: number, look: DieLook): void {
+    const cell = 12 * E;
+    const w = value.length * cell + 4 * E;
+    const h = cell + 4 * E;
+    const bx = Math.round((x - w / 2) / E) * E;
+    const by = Math.round((y - h / 2) / E) * E;
+    ctx.fillStyle = look.edge;
+    ctx.fillRect(bx - E, by - E, w + 2 * E, h + 2 * E);
+    ctx.fillStyle = `rgb(${look.body.join(',')})`;
+    ctx.fillRect(bx, by, w, h);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(bx + E, by + E, w - 2 * E, h - 2 * E);
+    this.text(ctx, value, bx + 2 * E, by + 2 * E, cell, look === GOLD ? GOOD : '#ffffff');
+  }
+
   /** A line or two of the game's letters in a black box with the frame's pale edge, over square (x, y). */
   private tag(ctx: CanvasRenderingContext2D, x: number, y: number, line: string, line2: string): void {
     const cell = 8 * E; // a letter's cell, as the game sets its own
@@ -539,9 +555,18 @@ export class TacticsView {
     const title = hit ? `${by} attacks ${at}` : chance ? `${at}: poison?` : `${by} strikes ${at}`;
     const label = (d: Die): string =>
       d.what === 'hit' ? `To hit (${d.need ?? 0}+)` : d.what === 'blow' ? 'Blow' : d.what === 'armour' ? 'Armour' : '1 spares';
+    // Settings' Dice: Off, the log only; Fast, thrown at twice the pace and read in less than half the time
+    const pace = g.options.dice;
+    if (pace === 'off') {
+      this.tray = null;
+      this.say(dice);
+      return;
+    }
+    const quick = pace === 'fast' ? 0.45 : 1;
     const throws = dice.map((die, k) => {
       const lane = k - (dice.length - 1) / 2;
-      const t = newThrow(this.rnd, die.sides, die.value, [lane, 0], now + k * 60, die.foe);
+      const t = newThrow(this.rnd, die.sides, die.value, [lane, 0], now + k * 60 * quick, die.foe);
+      t.dur *= quick;
       return Object.assign(t, { die, label: label(die) });
     });
     this.tray = { title, dice: throws, result: null, hideAt: Infinity };
@@ -570,8 +595,8 @@ export class TacticsView {
     else result = { text: `${first.value}`, colour: CHALK };
     if (this.tray) this.tray.result = result;
     // read, then on to the blow (the tray goes a moment after, or as the next throw comes)
-    await g.p.sleep(RESULT_MS);
-    if (this.tray) this.tray.hideAt = performance.now() + 500;
+    await g.p.sleep(RESULT_MS * (pace === 'fast' ? 0.4 : 1));
+    if (this.tray) this.tray.hideAt = performance.now() + (pace === 'fast' ? 200 : 500);
   }
 
   /** The faces the dice show now (the browser test's): each die's value, the face its rotation turns up, landed or not. */
@@ -697,10 +722,13 @@ export class TacticsView {
     ctx.clip();
     const D = DIE * E;
     const ground = y + 3 * E + small + E + D * 0.5;
+    // the dice spread across the felt, closer where there are more than it holds at their own spacing
+    const lanes = tr.dice.length;
+    const spread = lanes > 1 ? Math.min(D * 1.55, (w - 6 * E - D) / (lanes - 1)) : D * 1.55;
     for (const d of tr.dice) {
       if (now < d.start) continue;
       const s = throwAt(d, now);
-      const cx = x + w / 2 + s.x * D * 1.55;
+      const cx = x + w / 2 + s.x * spread;
       const gy = ground + s.y * D * 0.15;
       ctx.fillStyle = 'rgba(0,0,0,0.4)';
       ctx.beginPath();
@@ -716,10 +744,16 @@ export class TacticsView {
         this.text(c, text, -text.length * 16, -16, 32, ink, false, edge),
       );
       ctx.drawImage(cv, Math.round(cx - D / 2), Math.round(gy - s.z * D * 0.35 - D / 2));
+      // landed: its number large on a plaque over it, to be read at a glance whatever the die (a d30's faces are small)
+      if (s.t >= 1) this.plaque(ctx, String(d.value), cx, gy - s.z * D * 0.35, look);
       if (s.t >= 1 && !tr.result) this.text(ctx, d.label, cx, gy + D * 0.5 + E, small, CHALK, true, '#000');
     }
     ctx.restore();
-    if (tr.result) this.text(ctx, tr.result.text, x + w / 2, y + h - cell - 3 * E, cell, tr.result.colour, true, '#000');
+    // what it came to, smaller where it is long, so it fits the felt
+    if (tr.result) {
+      const fit = Math.min(cell, Math.floor((w - 6 * E) / tr.result.text.length / E) * E);
+      this.text(ctx, tr.result.text, x + w / 2, y + h - cell - 3 * E + (cell - fit), fit, tr.result.colour, true, '#000');
+    }
   }
 }
 

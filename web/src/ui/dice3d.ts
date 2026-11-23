@@ -311,6 +311,32 @@ export const GOLD: DieLook = { body: [214, 160, 48], ink: '#2a1600', edge: '#4a2
 const shade = (c: [number, number, number], k: number, spec: number): string =>
   `rgb(${Math.min(255, c[0] * k + 255 * spec) | 0},${Math.min(255, c[1] * k + 255 * spec) | 0},${Math.min(255, c[2] * k + 255 * spec) | 0})`;
 
+/** How far each face's middle is from its nearest edge (the die's own size, centre to corner, 1): the room a number has. */
+const ROOM = new WeakMap<Solid, number[]>();
+function roomOf(s: Solid): number[] {
+  let room = ROOM.get(s);
+  if (!room) {
+    room = s.faces.map((f) => {
+      const c = mul(
+        f.reduce((acc, k) => add(acc, s.verts[k]), [0, 0, 0] as V3),
+        1 / f.length,
+      );
+      let least = Infinity;
+      f.forEach((k, j) => {
+        const a = s.verts[k];
+        const b = s.verts[f[(j + 1) % f.length]];
+        const ab = add(b, mul(a, -1));
+        const ac = add(c, mul(a, -1));
+        const x = cross(ac, ab);
+        least = Math.min(least, Math.sqrt(dot(x, x) / dot(ab, ab)));
+      });
+      return least;
+    });
+    ROOM.set(s, room);
+  }
+  return room;
+}
+
 /**
  * Draw a die into `ctx` (a small canvas: the grain), centred at (cx, cy), `r` pixels from centre to corner, turned by
  * `m`. Faces away from the eye are not drawn: a die is convex, so the rest never overlap.
@@ -329,6 +355,8 @@ export function drawDie(
   const pv = s.verts.map((v) => apply(m, v));
   const scr = pv.map((p) => project(p));
   const faces = s.faces.map((f, i) => ({ f, i, n: apply(m, s.normals[i]) })).filter((x) => dot(x.n, EYE) > 0.02);
+  // the face turned most to the eye: the one lettered
+  const front = faces.reduce((a, b) => (dot(b.n, EYE) > dot(a.n, EYE) ? b : a), faces[0]).i;
   for (const { f, i, n } of faces) {
     const diff = Math.max(0, dot(n, LIGHT));
     const spec = Math.pow(Math.max(0, dot(n, HALF)), 28) * 0.85;
@@ -344,10 +372,11 @@ export function drawDie(
     ctx.strokeStyle = `rgba(255,255,255,${0.12 + spec * 0.5})`;
     ctx.lineWidth = Math.max(1, r * 0.03);
     ctx.stroke();
-    // the number, printed flat on the face
+    // the number, printed flat on the face: only the face turned most to the eye, as a die is read, and no larger than
+    // the face holds - two figures drawn narrower - so it never spills onto the faces about it
+    if (i !== front) continue;
     const facing = dot(n, EYE);
-    // the many-sided: only the face turned up is lettered, the rest left plain, as they read on a real die
-    if (facing < (s.sides >= 12 ? 0.82 : 0.5)) continue;
+    if (facing < 0.35) continue;
     const c = mul(
       f.reduce((acc, k) => add(acc, pv[k]), [0, 0, 0] as V3),
       1 / f.length,
@@ -358,15 +387,14 @@ export function drawDie(
     const [ux, uy] = project(up);
     const [rx, ry] = project(right);
     const v = String(s.values[i]);
-    const size =
-      r *
-      (s.sides <= 6 ? 1.0 : s.sides === 8 ? 0.95 : s.sides === 10 ? 0.85 : s.sides === 12 ? 0.75 : s.sides === 20 ? 0.7 : 0.72) *
-      (v.length > 1 ? 0.9 : 1);
+    const narrow = v.length > 1 ? 0.7 : 1;
+    const hold = roomOf(s)[i] * 0.92 * 2;
+    const size = r * Math.min(s.sides <= 6 ? 1.0 : 0.95, hold / Math.hypot(v.length * narrow, 1));
     // lettered at 32px and scaled onto the face (a 1px font scaled up draws nothing in some browsers)
     const k = size / 32;
     ctx.save();
-    ctx.setTransform(rx * k, ry * k, -ux * k, -uy * k, cx + px * r, cy + py * r);
-    ctx.globalAlpha = Math.min(1, (facing - (s.sides >= 12 ? 0.82 : 0.5)) * 6);
+    ctx.setTransform(rx * k * narrow, ry * k * narrow, -ux * k, -uy * k, cx + px * r, cy + py * r);
+    ctx.globalAlpha = Math.min(1, (facing - 0.35) * 5);
     if (print) print(ctx, v, look.ink, look.edge);
     else {
       ctx.font = '32px monospace';

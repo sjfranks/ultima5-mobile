@@ -252,7 +252,17 @@ describe('the Pause menu, Gameplay and Settings', () => {
     const { audioLines, gameplayLines, settingLines } = await import('../src/game/menu.ts');
     const name = (l: { label: string }): string => l.label.replace(/:.*/, '');
     expect(audioLines(g).map((l) => l.label)).toEqual(['Back', 'Sound: Classical', 'Music level: 60%', 'Sound FX level: 80%']);
-    expect(gameplayLines(g).map(name)).toEqual(['Back', 'Input', 'Auto Pause', 'Rules', 'Turns', 'Exit', 'Snap attacks', 'Max input']);
+    expect(gameplayLines(g).map(name)).toEqual([
+      'Back',
+      'Input',
+      'Auto Pause',
+      'Rules',
+      'Turns',
+      'Exit',
+      'Dice',
+      'Snap attacks',
+      'Max input',
+    ]);
     expect(settingLines(g).map(name)).toEqual([
       'Back',
       'UX',

@@ -97,6 +97,11 @@ export interface Options {
    */
   exitLoots: boolean;
   /**
+   * The dice of a tactical fight (ui/tacticsView.ts): thrown in the tray as each roll falls, at their pace or faster -
+   * or not shown at all, each roll said in the log only.
+   */
+  dice: 'normal' | 'fast' | 'off';
+  /**
    * Battery saver (the port's): the map rests - its water, its figures, the cursor - once a minute has gone by with
    * nothing pressed, until the next press (screen.ts waitKey). Off, it goes on as ever.
    */
@@ -290,6 +295,7 @@ export const DEFAULTS: Options = {
   confirmFight: true,
   tacticalTurns: true,
   exitLoots: true,
+  dice: 'normal',
   batterySaver: false,
   snapTargets: true,
   maxInput: 'medium',
@@ -357,6 +363,7 @@ export function normaliseOptions(from: Saved): Partial<Options> {
   if (saved.confirmFight !== undefined && typeof saved.confirmFight !== 'boolean') delete saved.confirmFight;
   if (saved.tacticalTurns !== undefined && typeof saved.tacticalTurns !== 'boolean') delete saved.tacticalTurns;
   if (saved.exitLoots !== undefined && typeof saved.exitLoots !== 'boolean') delete saved.exitLoots;
+  if (saved.dice !== undefined && !['normal', 'fast', 'off'].includes(saved.dice)) delete saved.dice;
   if (saved.batterySaver !== undefined && typeof saved.batterySaver !== 'boolean') delete saved.batterySaver;
   if (saved.snapTargets !== undefined && typeof saved.snapTargets !== 'boolean') delete saved.snapTargets;
   if (saved.maxInput !== undefined && !INPUT_PACE_NAMES.includes(saved.maxInput)) delete saved.maxInput;

@@ -377,68 +377,49 @@ has the whole list; the highlights:
   [Fixing the 1988 game](docs/fixing-1988.md) tells how they were found,
   down to the original Apple II disks.
 
-## Tactical turns
+## Tactical combat
 
-Fights here are a board game: **each fighter's turn is two actions**,
-where 1988's was one. An action is what a turn was - a blow, a spell, a
-use, a pass - or a move of a few squares. Everything else is 1988's fight as the engine
-plays it - whose turn comes when (each fighter's dexterity timer), the
-roll to hit (the target's dexterity against the attacker's), the blow
-(1 to the weapon's damage, less 1 to the armour), the creatures' minds,
-poison, sleep, charm, fields, and what a square does to whoever ends a
-turn on it, once a turn. Gameplay, **Turns**, has 1988's one action back.
+The game's combat is tactical: **each fighter's turn is two actions**,
+where 1988's was one. Gameplay, **Combat**, switches between Tactical and
+Classic (1988)'s one action a turn. An action is what a turn was - a
+blow, a spell, a use, a pass - or a move of a few squares. Everything
+else is 1988's fight as the engine plays it - whose turn comes when, the
+roll to hit, the blow less the armour, the creatures' minds, poison,
+sleep, charm, fields.
 
-- **A move goes as far as dexterity takes the fighter**: a move is one
-  action, and walks up to two squares for a dexterity under 10, three for
-  10 to 19 (an everyday one), four for 20 to 29 and five for 30 - for the
-  party and the creatures alike. A blow, a spell or a pass ends a move
-  under way; with no actions left, its squares may still be walked, and
-  anything else ends the turn.
-- **A walk is seen**: a tapped way is walked a square at a time, the
-  figure gliding from square to square (Smooth motion), not set down at
-  its end. Anywhere, a tapped walk is not broken off by poison's bite:
-  the poisoned take what they are owed together at the walk's end.
-- **An aim is chosen**: with the crosshair up - a shot, or a spell such as
-  Grav Por or Vas Flam - a faint brass line goes round the squares it
-  reaches and the foes there are marked; a tap aims at a square, its flight dotted to where it
-  would stop, and a second tap looses it. As in 1988 a missile strikes the
-  first figure in its way, or breaks on a wall: who it would strike
-  instead is marked, with the odds against them.
-- **The dice** are thrown into a tray over the field, clear of whom they
-  are for, as the rules roll them - blue for the party, red for the
-  creatures, big enough to read, numbered in the game's own lettering. The
-  tray says who rolls against whom ("Iolo attacks Orc"), labels each die
-  ("To hit (12+)", "Blow", "Armour"), and once they land says what came of
-  it: HIT! or MISS!, then the blow less the armour ("7 - 1 = 6 DAMAGE",
-  or GRAZED!). The roll to hit is thrown on a d30, the blow and the armour
-  on the least die that holds their range (a long sword's 1 to 15 on a
-  d20). The log says each throw too ("d30 18>=9", "d12 6 -d4 1").
-- **On the field**, drawn as the game's own pixels and kept quiet: a soft
-  line round the squares one move reaches (a second move is shown from
-  where the first ends); the foes the weapon reaches, white corners, and
-  those a walk away, fainter; a gold pip over the member for each action
-  left. A tap on a square walks there at once - past one move, the second
-  move takes the walk on, or as far toward it as the turn goes; a tap on a
-  foe within a walk walks to it and strikes, marked first and done at a
-  second tap, its odds shown over it - 1988's own, the roll's chance, the
-  blow to expect and the chance it fells it.
-- **The hotbar** is the touch bar's, in a member's turn: Attack, Cast,
-  Use, Pass and Undo; the Act menu, Ready, Ztats, Switch Weapon and the
-  Pause menu on its other page; and End, which asks first. Undo takes back
-  a step while the turn lasts, never a blow or a spell: dice are final. A
-  keyboard has Backspace for Undo, and E for End with Classic input; the
-  Act menu has both.
-- **Tactical fights** (the Pause menu): a series of five, 1988's creatures
-  on its own arenas, fought by the party as it is under the Classic rules,
-  the game put back exactly as it was after - Orcs on the Road (six orcs,
-  two headless, the grass), The Fens (rats, pythons, slimes, spiders, the
-  swamp), Pirates Ashore (fighters, bards and a mage, the pirates' shore),
-  The Dead of Yew (skeletons, ghosts and a gazer, the towne's cobbles) and
-  The Dragon's Pass (a dragon, two trolls and an ettin, the hills).
-- `npm run tactics:e2e` taps through a fight in Chromium (the dev server
+- **A move goes as far as dexterity takes the fighter**: two squares for
+  a dexterity under 10, three for 10 to 19, four for 20 to 29 and five
+  for 30 - for the party and the creatures alike.
+- **A second attack in a turn is at -5 to hit**, for either side. Both
+  hands of one attack (a main gauche with a sword) are one action, and
+  spells are not attacks.
+- **Turns are whole turns**: a spell's length (In Sanct, In An, Rel Tym,
+  An Tym), Quickness's lost turn, a wounded creature's mending and a
+  creature's gifts (charm, vanishing, summoning) all count or come once
+  a turn - two actions - never once an action.
+- **Controls are Fire Emblem's**: a cursor (the base game's walk mark)
+  moved by the pad, the arrows or WASD; a square or foe chosen once to
+  see the plan and its forecast (Hit %, damage, the chance it fells),
+  again to do it. By touch, a tap marks and a second tap acts. An arrow
+  off the field's edge from the member flees.
+- **The dice** are thrown in a tray as the rules roll them - blue for the
+  party, red for the creatures - blank while rolling, the score shown once
+  they land, with HIT!/MISS! and the damage. Gameplay, **Dice**: Normal,
+  Fast, or Off (each roll in the log only).
+- **The hotbar** (the touch bar in a member's turn): Attack, Equip, Use,
+  Pass, Undo, End. **Undo goes back through the whole fight** - steps,
+  blows and spells with their rolls, and earlier fighters' turns. The
+  dice are seeded, so a blow taken back and done again falls the same.
+- **Tactical fights** (the Pause menu): eleven fights on 1988's arenas,
+  fought by the party as it is, the game put back exactly as it was
+  after - from Orcs on the Road and The Dragon's Pass to The Bridge, Sea
+  Battle and The Storeroom.
+- Tests: `tests/tactics.test.ts` and `tests/tacticsBattery.test.ts` (every
+  fight played out, twenty weapon loadouts, twenty spells).
+  `npm run tactics:e2e` taps through a fight in Chromium (the dev server
   running: `npx vite --port 5173`); `npm run tactics:demo <dir>` builds
-  the game as a demo of it from your own copy, for yourself alone (it
-  carries the game's files: never commit it).
+  the game as a demo from your own copy, for yourself alone (it carries
+  the game's files: never commit it).
 
 ## Design notes
 

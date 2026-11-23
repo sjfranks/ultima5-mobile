@@ -257,7 +257,7 @@ describe('the Pause menu, Gameplay and Settings', () => {
       'Input',
       'Auto Pause',
       'Rules',
-      'Turns',
+      'Combat',
       'Exit',
       'Dice',
       'Snap attacks',

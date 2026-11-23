@@ -2144,9 +2144,9 @@ export function gameplayLines(g: Game): Setting[] {
       act: () => void (o.rules = RULES[(RULES.indexOf(o.rules) + 1) % RULES.length]),
     },
     {
-      // Tactical turns (tactics.ts): two actions a turn, the dice shown; Off, 1988's one.
-      label: `Turns: ${o.tacticalTurns ? 'Two actions' : 'One (1988)'}`,
-      note: 'Two: a step, blow or spell each, the dice shown.',
+      // The combat system (tactics.ts): tactical, two actions a turn and the dice shown; or 1988's, one a turn.
+      label: `Combat: ${o.tacticalTurns ? 'Tactical' : 'Classic (1988)'}`,
+      note: 'Tactical: two actions a turn, the dice shown.',
       act: () => void (o.tacticalTurns = !o.tacticalTurns),
     },
     {

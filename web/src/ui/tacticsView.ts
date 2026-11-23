@@ -160,8 +160,11 @@ export class TacticsView {
     };
     const d = move[k];
     if (d) {
-      const x = Math.max(0, Math.min(10, cur.x + d[0]));
-      const y = Math.max(0, Math.min(10, cur.y + d[1]));
+      // off the field from the member's own square on its edge: the step itself, out of the fight (1988's way to flee)
+      const [ox, oy] = [cur.x + d[0], cur.y + d[1]];
+      if (home && (ox < 0 || oy < 0 || ox > 10 || oy > 10) && k <= 0xff && !(k >= 0xd3 && k <= 0xd6)) return k;
+      const x = Math.max(0, Math.min(10, ox));
+      const y = Math.max(0, Math.min(10, oy));
       this.setCursor(i, { x, y });
       return 0;
     }

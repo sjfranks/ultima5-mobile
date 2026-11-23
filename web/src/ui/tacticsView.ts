@@ -289,9 +289,8 @@ export class TacticsView {
       ctx.fillStyle = CHALK;
       ctx.fillRect(mx + (5 + k * 3) * E, my + 2 * E, E, E);
     }
-    // the cursor: gold brackets over the square it is on, a little outside it (Fire Emblem's)
-    const cur = this.cursorOf(i);
-    this.cursor(ctx, ...this.at(cur.x, cur.y));
+    // (the cursor, put on a square, is shown as a walk tapped out of a fight is: the way there and the end's corners -
+    // ui/screen.ts drawWay, given it by ui/directTouch.ts - and on the member, not at all)
     // a foe marked by a tap: its odds, in the game's letters
     const way = this.screen.wayShown?.();
     if (way && way.kind === 'foe') {
@@ -398,28 +397,6 @@ export class TacticsView {
       ctx.fillRect(cx, sy > 0 ? cy : cy - l + E, E, l);
     }
     ctx.globalAlpha = 1;
-  }
-
-  /** The cursor's brackets at the square whose corner is (x, y) on the page: gold, edged dark, 2 EGA pixels thick. */
-  private cursor(ctx: CanvasRenderingContext2D, x: number, y: number): void {
-    const t = 2 * E;
-    const l = 6 * E;
-    const o = -E;
-    for (const [colour, grow] of [
-      ['#1a1006', E],
-      ['#f8c840', 0],
-    ] as const) {
-      ctx.fillStyle = colour;
-      for (const [cx, cy, sx, sy] of [
-        [x + o, y + o, 1, 1],
-        [x + SQ - o - t, y + o, -1, 1],
-        [x + o, y + SQ - o - t, 1, -1],
-        [x + SQ - o - t, y + SQ - o - t, -1, -1],
-      ]) {
-        ctx.fillRect((sx > 0 ? cx : cx - l + t) - grow, cy - grow, l + 2 * grow, t + 2 * grow);
-        ctx.fillRect(cx - grow, (sy > 0 ? cy : cy - l + t) - grow, t + 2 * grow, l + 2 * grow);
-      }
-    }
   }
 
   /** A die's number on a plaque centred on (x, y): the game's letters, large, black edged in the die's colour. */

@@ -767,9 +767,7 @@ export class Screen implements Platform {
     const marks = this.fb.marksShown();
     this.readLog(letters, p);
     const cover = this.overPageCovers?.() ?? null;
-    const shown = cover
-      ? letters.filter((l) => l.x < cover[0] || l.x >= cover[2] || l.y < cover[1] || l.y >= cover[3])
-      : letters;
+    const shown = cover ? letters.filter((l) => l.x < cover[0] || l.x >= cover[2] || l.y < cover[1] || l.y >= cover[3]) : letters;
     this.drawLetters(ctx, p.blits, shown, marks, p.blits.length > 1);
     // The harpsichord's keyboard, through the blit that shows the map (or the whole screen).
     const over = p.blits.find((b) => b.part === 'view' || b.part === 'screen');

@@ -270,6 +270,8 @@ export function installPageHooks(g: Game, screen: Screen, canvas: HTMLCanvasElem
     }
   };
   window.addEventListener('keydown', () => (g.lastSource = 'keyboard'), true);
+  // A phone or tablet, before anything is pressed: touch, so what is said of the controls is said of taps.
+  if (window.matchMedia?.('(pointer: coarse)').matches && !window.matchMedia('(any-pointer: fine)').matches) g.lastSource = 'touch';
   // Held, a key that stands for a button does not repeat into a second press (and a second turn); the d-pad's do.
   screen.dropRepeat = (k) =>
     g.options.input === 'controller' &&

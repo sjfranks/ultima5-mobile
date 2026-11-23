@@ -31,6 +31,8 @@ import {
   weaponFor,
 } from '../game/combat.ts';
 import { CF, type Game } from '../game/game.ts';
+import { K, Pad, UNDO_ACTION } from '../game/io.ts';
+import { queueKeys } from '../game/input.ts';
 import { hitChance, stepsFor, walkCost, type Die } from '../game/tactics.ts';
 import { drawDie, GOLD, newThrow, solid, throwAt, type Throw } from './dice3d.ts';
 import { glyphPixel, readFont } from '../data/font.ts';
@@ -48,6 +50,10 @@ const CHALK = '#f0ece0';
 const EDGE = 'rgba(190, 215, 255, 0.5)';
 const AIM_EDGE = 'rgba(214, 170, 96, 0.5)';
 
+/** The view installed (installTacticsView), for touch to move its cursor. */
+let shown: TacticsView | null = null;
+export const tacticsView = (): TacticsView | null => shown;
+
 export class TacticsView {
   private dieCanvas = document.createElement('canvas');
   private dieCtx = this.dieCanvas.getContext('2d')!;
@@ -62,6 +68,7 @@ export class TacticsView {
     screen.overPageMoving = () => this.moving();
     screen.overPageCovers = () => this.trayRect();
     g.hooks.throwDice = (dice) => this.throwDice(dice);
+    g.hooks.tacticalKey = (k) => this.cursorKey(k);
     (window as unknown as { u5tactics: TacticsView }).u5tactics = this;
   }
 
@@ -96,14 +103,130 @@ export class TacticsView {
     return walkCost(this.g, i, d);
   }
 
-  /** 1988's odds of member `i` striking foe `j` (from where they stand): the roll's chance, the blow, the kill. */
+  /**
+   * 1988's odds of member `i` striking foe `j`: the roll's chance, the blow, the kill - from where they would strike it,
+   * a step or a walk away (targetsOf), with the weapon that reaches it from there.
+   */
   odds(i: number, j: number): { hit: number; avg: number; kill: number; def: number } | null {
     const g = this.g;
-    const w = weaponFor(g, i, j);
+    const c = g.combat[i];
+    const from = this.targets(i).get(j);
+    const [x, y] = [c.x, c.y];
+    let w: number;
+    try {
+      if (from) [c.x, c.y] = [from.x, from.y];
+      w = weaponFor(g, i, j);
+    } finally {
+      [c.x, c.y] = [x, y];
+    }
     const need = hitNeed(g, j, i, w);
     const blow = blowOdds(g, i, j, w);
     if (!blow) return { hit: need === null ? 1 : hitChance(need), avg: 99, kill: 1, def: 0 };
     return { hit: need === null ? 1 : hitChance(need), ...blow };
+  }
+
+  // --- The cursor (Fire Emblem's way) --------------------------------------------------------------
+
+  /** Where the cursor is in member combatant `i`'s turn: the square chosen, or the member's own. */
+  cursorOf(i: number): { x: number; y: number } {
+    const c = this.g.combat[i];
+    return this.g.tactics.cursor ?? { x: c.x, y: c.y };
+  }
+
+  /**
+   * A key at a member's tactical prompt, as Fire Emblem reads it: the d-pad or arrows move the cursor over the field,
+   * the way to it and the odds of a foe there shown; A (Enter) chooses it - walked to, or the foe struck (walked to
+   * first, where it is a walk away) - or, on the member, opens what there is to do; B (Escape) brings the cursor home,
+   * and there takes back the turn's last action; the shoulders jump it from foe to foe in reach. Anything else is the
+   * prompt's as ever. 0: nothing for the prompt.
+   */
+  cursorKey(k: number): number {
+    const g = this.g;
+    const i = this.member();
+    const t = g.tactics;
+    if (i < 0 || g.s.crosshair) return k;
+    const c = g.combat[i];
+    const cur = this.cursorOf(i);
+    const home = cur.x === c.x && cur.y === c.y;
+    const move: Record<number, [number, number]> = {
+      [K.Up]: [0, -1],
+      [K.Down]: [0, 1],
+      [K.Left]: [-1, 0],
+      [K.Right]: [1, 0],
+      0xd3: [-1, -1],
+      0xd4: [-1, 1],
+      0xd5: [1, -1],
+      0xd6: [1, 1],
+    };
+    const d = move[k];
+    if (d) {
+      const x = Math.max(0, Math.min(10, cur.x + d[0]));
+      const y = Math.max(0, Math.min(10, cur.y + d[1]));
+      this.setCursor(i, { x, y });
+      return 0;
+    }
+    if (k === Pad.LB || k === Pad.RB) {
+      // foe to foe: those in reach, nearest first, else every foe in sight
+      const near = (j: number): number => distance(g.combat[j].x, g.combat[j].y, c.x, c.y);
+      let foes = [...this.targets(i).keys()];
+      if (!foes.length)
+        for (let j = 0; j < 0x20; j++) {
+          const f = g.combat[j];
+          if (f.flags && !(f.flags & CF.Dead) && onMonsterSide(g, j) && inArena(f.x, f.y)) foes.push(j);
+        }
+      foes = foes.sort((a, b) => near(a) - near(b) || a - b);
+      if (!foes.length) return 0;
+      const at = foes.findIndex((j) => g.combat[j].x === cur.x && g.combat[j].y === cur.y);
+      const next = foes[(at + (k === Pad.RB ? 1 : at < 0 ? 0 : -1) + foes.length) % foes.length];
+      this.setCursor(i, { x: g.combat[next].x, y: g.combat[next].y });
+      return 0;
+    }
+    // X on a foe the cursor is on: struck there; anywhere else, X's own attack, the cursor home
+    if (k === Pad.X && !home) {
+      const j = combatantAt(g, cur.x, cur.y);
+      if (!(j >= 0 && this.targets(i).has(j))) {
+        this.setCursor(i, null);
+        return k;
+      }
+    }
+    if (k === Pad.A || k === K.Enter || k === Pad.X) {
+      if (home) return k;
+      const keys = this.choose(i, cur);
+      if (keys) queueKeys(...keys);
+      return 0;
+    }
+    if (k === Pad.B || k === K.Escape) {
+      if (!home) {
+        this.setCursor(i, null);
+        return 0;
+      }
+      // B on the member: the turn's last walk taken back, as Fire Emblem's B takes back a move (a roll is Undo's)
+      const last = t.history[t.history.length - 1];
+      if (k === Pad.B && last && last.turnNo === t.turnNo && last.rolls === t.rolls) return UNDO_ACTION;
+      return k === Pad.B ? 0 : k;
+    }
+    return k;
+  }
+
+  /** The cursor put on `at` (null: home, on the member), the field drawn again for it. */
+  setCursor(i: number, at: { x: number; y: number } | null): void {
+    const c = this.g.combat[i];
+    this.g.tactics.cursor = at && !(at.x === c.x && at.y === c.y) ? at : null;
+    this.screen.fb.dirty = true;
+  }
+
+  /**
+   * Square `at` chosen in member combatant `i`'s turn (the cursor's A, a confirming tap): the keys that do it, for the
+   * prompt to read as a tap's (its foe's aim set), the cursor home; null where it does nothing.
+   */
+  choose(i: number, at: { x: number; y: number }): number[] | null {
+    const g = this.g;
+    const plan = tacticalPlan(g, i, at);
+    if (!plan) return null;
+    if (plan.foe) g.bumpFoe = { x: plan.foe.x, y: plan.foe.y, pointed: true };
+    g.tactics.cursor = null;
+    this.screen.fb.dirty = true;
+    return plan.keys;
   }
 
   // --- Drawing, on the page ------------------------------------------------------------------
@@ -166,20 +289,16 @@ export class TacticsView {
       ctx.fillStyle = CHALK;
       ctx.fillRect(mx + (5 + k * 3) * E, my + 2 * E, E, E);
     }
+    // the cursor: gold brackets over the square it is on, a little outside it (Fire Emblem's)
+    const cur = this.cursorOf(i);
+    this.cursor(ctx, ...this.at(cur.x, cur.y));
     // a foe marked by a tap: its odds, in the game's letters
     const way = this.screen.wayShown?.();
     if (way && way.kind === 'foe') {
       const j = combatantAt(g, way.end.x, way.end.y);
       if (j >= 0 && onMonsterSide(g, j)) {
         const o = this.odds(i, j);
-        if (o)
-          this.tag(
-            ctx,
-            way.end.x,
-            way.end.y,
-            `${Math.round(o.hit * 100)}% ~${o.avg >= 99 ? '!' : o.avg.toFixed(0)}`,
-            o.kill > 0 ? `KO ${Math.round(o.kill * 100)}%` : '',
-          );
+        if (o) this.tag(ctx, way.end.x, way.end.y, ...forecast(o.hit, o.avg >= 99 ? null : o.avg, o.kill));
       }
     }
   }
@@ -238,18 +357,12 @@ export class TacticsView {
       const need = hitNeed(g, j, i, weapon);
       const blow = blowOdds(g, i, j, weapon);
       const hit = need === null ? 1 : hitChance(need);
-      const odds = `${Math.round(hit * 100)}% ~${blow ? blow.avg.toFixed(0) : '!'}`;
+      const [odds, ko] = forecast(hit, blow ? blow.avg : null, blow ? blow.kill : 1);
       const name =
         g.combat[j].flags & CF.Player
           ? (s.members[g.combat[j].who]?.name.trim() ?? '')
           : (g.data.table(0x1856, 0x30)[g.combat[j].who] ?? '');
-      this.tag(
-        ctx,
-        stop.x,
-        stop.y,
-        blocked ? `${name}!` : odds,
-        blocked ? odds : blow && blow.kill > 0 ? `KO ${Math.round(blow.kill * 100)}%` : '',
-      );
+      this.tag(ctx, stop.x, stop.y, blocked ? `${name}!` : odds, blocked ? odds : ko);
     } else if (blocked) this.tag(ctx, stop.x, stop.y, 'Blocked', '');
   }
 
@@ -285,6 +398,28 @@ export class TacticsView {
       ctx.fillRect(cx, sy > 0 ? cy : cy - l + E, E, l);
     }
     ctx.globalAlpha = 1;
+  }
+
+  /** The cursor's brackets at the square whose corner is (x, y) on the page: gold, edged dark, 2 EGA pixels thick. */
+  private cursor(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+    const t = 2 * E;
+    const l = 6 * E;
+    const o = -E;
+    for (const [colour, grow] of [
+      ['#1a1006', E],
+      ['#f8c840', 0],
+    ] as const) {
+      ctx.fillStyle = colour;
+      for (const [cx, cy, sx, sy] of [
+        [x + o, y + o, 1, 1],
+        [x + SQ - o - t, y + o, -1, 1],
+        [x + o, y + SQ - o - t, 1, -1],
+        [x + SQ - o - t, y + SQ - o - t, -1, -1],
+      ]) {
+        ctx.fillRect((sx > 0 ? cx : cx - l + t) - grow, cy - grow, l + 2 * grow, t + 2 * grow);
+        ctx.fillRect(cx - grow, (sy > 0 ? cy : cy - l + t) - grow, t + 2 * grow, l + 2 * grow);
+      }
+    }
   }
 
   /** A line or two of the game's letters in a black box with the frame's pale edge, over square (x, y). */
@@ -785,6 +920,47 @@ export function walkToward(g: Game, i: number, x: number, y: number): { x: numbe
   return end > 0 ? way.slice(0, end) : way;
 }
 
+/**
+ * What choosing square `square` in member combatant `i`'s tactical turn does (the cursor's A, a tap's confirm), as the
+ * keys that do it: a foe in reach struck - from where they stand, or walked to first (`foe`, the foe's square, for the
+ * blow's aim: Game.bumpFoe); any other square walked to, as far as the turn goes toward it. `way` is the walk, for the
+ * mark; `kind`, what the mark shows. Null where nothing would be done (the member's own square, nowhere nearer).
+ */
+export function tacticalPlan(
+  g: Game,
+  i: number,
+  square: { x: number; y: number },
+): { keys: number[]; foe: { x: number; y: number } | null; way: { x: number; y: number }[]; kind: 'foe' | 'walk' } | null {
+  const c = g.combat[i];
+  if (!c || (square.x === c.x && square.y === c.y)) return null;
+  const arrows = (path: { x: number; y: number }[]): number[] =>
+    path.map((p, k) => {
+      const from = k === 0 ? c : path[k - 1];
+      const [dx, dy] = [p.x - from.x, p.y - from.y];
+      return dx > 0 ? K.Right : dx < 0 ? K.Left : dy > 0 ? K.Down : K.Up;
+    });
+  const j = combatantAt(g, square.x, square.y);
+  const targets = targetsOf(g, i);
+  if (j >= 0 && onMonsterSide(g, j) && targets.has(j)) {
+    const step = targets.get(j)!;
+    const walk = step === null ? [] : pathOf(g, i, step.x, step.y);
+    return { keys: [...arrows(walk), 0x41], foe: { ...square }, way: walk, kind: 'foe' };
+  }
+  const path = walkToward(g, i, square.x, square.y);
+  if (!path.length) return null;
+  return { keys: arrows(path), foe: null, way: path, kind: 'walk' };
+}
+
+/**
+ * A blow's forecast, in the game's letters (Fire Emblem's): the chance to hit and the hurt to expect, and below, the
+ * chance it fells the foe. `avg` null: sure to kill.
+ */
+function forecast(hit: number, avg: number | null, kill: number): [string, string] {
+  const dmg = avg === null ? 'All' : avg < 1 && avg > 0 ? '<1' : avg.toFixed(0);
+  return [`Hit ${Math.round(hit * 100)}% Dmg ${dmg}`, kill > 0 ? `KO ${Math.round(kill * 100)}%` : ''];
+}
+
 export function installTacticsView(g: Game, screen: Screen): TacticsView {
-  return new TacticsView(g, screen);
+  shown = new TacticsView(g, screen);
+  return shown;
 }

@@ -170,9 +170,24 @@ export const COMBAT_TIPS: { id: string; pad: string; keys: string; touch: string
   },
 ];
 
+/** A tactical fight's tip: the cursor, chosen with, and backed out of. */
+export const TACTICAL_TIP = {
+  id: 'tactical-cursor',
+  pad: 'Tip: D-pad moves the cursor. A: move or attack there. B: back. LB/RB: next foe.',
+  keys: 'Tip: WASD moves the cursor. Z: move or attack there. X: back. [ ]: next foe.',
+  classic: 'Tip: Arrows move the cursor. Enter: move or attack there. Esc: back.',
+  touch: 'Tip: Tap a square to aim, then tap it again to go.',
+};
+
 /** The fight's tip, given now (combat.ts playerTurn), worded for what the player last pressed; null, none. */
 export function combatTip(g: Game): string | null {
   const o = g.options;
+  // A tactical fight's own, first: the cursor (Fire Emblem's: ui/tacticsView.ts), as the player last pressed.
+  if (g.tactics.on && g.hooks.tacticalKey && !g.tipsShown.has(TACTICAL_TIP.id)) {
+    g.tipsShown.add(TACTICAL_TIP.id);
+    if (g.lastSource === 'touch') return TACTICAL_TIP.touch;
+    return o.input !== 'controller' ? TACTICAL_TIP.classic : g.lastSource === 'keyboard' ? TACTICAL_TIP.keys : TACTICAL_TIP.pad;
+  }
   if (o.input !== 'controller' || !o.autoAim || !o.snapTargets) return null;
   const tip = COMBAT_TIPS.find((t) => !g.tipsShown.has(t.id));
   if (!tip || (tip.shoulders && g.lastSource === 'touch')) return null;

@@ -60,6 +60,8 @@ export interface Snap {
   left: number;
   steps: number;
   turnNo: number;
+  /** The dice rolled by then (Tactics.rolls): none since, and what came after was a walk. */
+  rolls: number;
   rng: number | null;
   snapMemory: number[];
 }
@@ -140,6 +142,11 @@ export class Tactics {
   endAsked = false;
   /** The fight of the series under way, or null. */
   series: SeriesFight | null = null;
+  /**
+   * The field's cursor, in a member's turn (ui/tacticsView.ts): the square chosen to walk to or strike, marked with the
+   * way there and the odds; null on the member themself. Each action begins with it there.
+   */
+  cursor: { x: number; y: number } | null = null;
   /** The members (by party place) who throw what they can (a dagger, spear, axe, oil) at foes past a neighbour: Throw on. */
   throwing = new Set<number>();
 }
@@ -168,6 +175,7 @@ export function snapshot(g: Game, left: number, steps: number): Snap {
     left,
     steps,
     turnNo: g.tactics.turnNo,
+    rolls: g.tactics.rolls,
     rng: g.rng instanceof SeededRandom ? g.rng.state : null,
     snapMemory: g.snapMemory.slice(),
   };
@@ -188,6 +196,7 @@ export function putBack(g: Game, snap: Snap): void {
   g.combatBytes.set(snap.combat);
   g.combatMap.set(snap.map);
   if (snap.rng !== null && g.rng instanceof SeededRandom) g.rng.state = snap.rng;
+  if (snap.rolls !== undefined) g.tactics.rolls = snap.rolls;
   if (snap.snapMemory) g.snapMemory.splice(0, snap.snapMemory.length, ...snap.snapMemory);
 }
 

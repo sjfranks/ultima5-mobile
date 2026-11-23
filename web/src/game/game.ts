@@ -121,6 +121,11 @@ export interface GameHooks {
   quit?: (() => void) | undefined;
   /** The dice of a tactical turn's roll thrown onto the field, resolved once they have landed (ui/tacticsView.ts). */
   throwDice?: ((dice: Die[]) => Promise<void>) | undefined;
+  /**
+   * A key or button at a member's tactical prompt, read for the field's cursor first (ui/tacticsView.ts, Fire
+   * Emblem's way): what the prompt reads instead - the key itself, another, or 0 for none (the cursor moved).
+   */
+  tacticalKey?: ((key: number) => number) | undefined;
 }
 
 /** What bump to act remembers of a thing (Game.bumped). */

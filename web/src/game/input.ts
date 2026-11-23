@@ -471,7 +471,12 @@ export async function getCommandKey(g: Game, where: Game['commandPrompt'], idle?
   }
   try {
     for (;;) {
-      const k = await rawKey(g, idle, false, true);
+      let k = await rawKey(g, idle, false, true);
+      // A member's tactical turn: the field's cursor reads a key pressed (a tap's keys are a choice made already).
+      if (where === 'combat' && !tapped && g.hooks.tacticalKey) {
+        k = g.hooks.tacticalKey(k);
+        if (k === 0) continue;
+      }
       let key = k;
       // Enter is A too, but for Classic input in a dungeon, where it turns the party about as in 1988.
       const turns = where === 'dungeon' && g.options.input !== 'controller';

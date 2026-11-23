@@ -59,6 +59,11 @@ async function game(browser, url, touch = true) {
     await p.touchscreen.tap(cx, cy);
     await p.waitForTimeout(120);
   };
+  // a square chosen in a tactical turn, as Fire Emblem has it: a tap puts the cursor there, a second does it
+  const choose = async (x, y) => {
+    await tap(x, y);
+    await tap(x, y);
+  };
   const state = () =>
     p.evaluate(() => {
       const { g, screen } = window.u5;
@@ -105,7 +110,6 @@ async function game(browser, url, touch = true) {
       }
     });
   await said();
-  const logText = () => p.evaluate(() => window.__said);
   // Pass: the bar's own, or on the hotbar's second page (turned to, pressed; the next turn opens on the first)
   const pass = async () => {
     const button = p.locator('button[aria-label="Pass"]:visible');
@@ -154,11 +158,19 @@ async function game(browser, url, touch = true) {
     return ready();
   };
 
-  // a square a step off: walked to at the first tap
+  // a square a step off: the first tap puts the cursor there, the way marked, nothing walked; the second walks it
   const one = reach.find((r) => r.n === 1);
   await tap(one.x, one.y);
+  const marked = await view(() => ({ cur: window.u5.g.tactics.cursor, way: window.u5.screen.wayShown?.() ?? null }));
+  const still = await state();
+  check(
+    marked.cur && marked.cur.x === one.x && marked.cur.y === one.y && marked.way && still.x === s.x && still.y === s.y,
+    'a first tap puts the cursor on the square, its way marked, nothing walked',
+  );
+  await shot('2-cursor');
+  await tap(one.x, one.y);
   let after = await arrive(s.i, one.x, one.y);
-  check(after.x === one.x && after.y === one.y && after.left === 1, 'a tap walks there at once, one action spent');
+  check(after.x === one.x && after.y === one.y && after.left === 1, 'a second tap there walks it, one action spent');
   check(after.undo, 'a step can be taken back');
   await shot('2-stepped');
 
@@ -175,7 +187,7 @@ async function game(browser, url, touch = true) {
     return one && { x: one[0] & 15, y: one[0] >> 4, d: one[1], dex };
   }, s.i);
   check(far && far.d >= 2, `a move walks ${far?.d} squares for dexterity ${far?.dex}`);
-  await tap(far.x, far.y);
+  await choose(far.x, far.y);
   after = await arrive(s.i, far.x, far.y);
   check(
     after && after.i === s.i && after.x === far.x && after.y === far.y && after.left === 1,
@@ -215,7 +227,7 @@ async function game(browser, url, touch = true) {
         return null;
       }, s.i);
       if (goal) {
-        await tap(goal.x, goal.y);
+        await choose(goal.x, goal.y);
         for (let k = 0; k < 60; k++) {
           const at = await view(([i]) => [window.u5.g.combat[i].x, window.u5.g.combat[i].y], s.i);
           if (at[0] === goal.x && at[1] === goal.y) break;
@@ -229,6 +241,8 @@ async function game(browser, url, touch = true) {
     }
     if (!struck && far && s.left === 2) {
       const from = [s.x, s.y];
+      await tap(far.x, far.y);
+      await shot('3-forecast');
       await tap(far.x, far.y);
       await p.waitForFunction(() => window.u5tactics.faces().length > 0 && window.u5tactics.faces().every((f) => f.landed), null, {
         timeout: 20000,

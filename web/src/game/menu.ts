@@ -1371,6 +1371,8 @@ export function contextual(g: Game): Item[] {
   }
   // A tactical turn's own (tactics.ts): End turn, its actions left passed; Undo, the fight's last action taken back.
   if (where === 'combat' && g.tactics.on && g.tactics.turn === s.combatTurn) {
+    // Pass: one action let go (B is the cursor's Back in a tactical turn, not a pass).
+    out.push({ label: 'Pass', key: K.Space });
     out.push({ label: 'End turn', key: END_TURN });
     out.push({ label: 'Undo', key: UNDO_ACTION, enabled: g.tactics.history.length > 0 });
   } else if (where === 'combat' && g.tactics.on && s.battleWon !== 0 && g.tactics.history.length > 0) {

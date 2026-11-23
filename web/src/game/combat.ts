@@ -3277,6 +3277,7 @@ async function takeTurn(g: Game, resume: Snap | null = null): Promise<void> {
       const before = snapshot(g, t.left, t.steps);
       const member = !onMonsterSide(g, i);
       t.stepped = false;
+      t.cursor = null;
       g.drawCombatMarks?.();
       const spent = member ? await playerTurn(g) : (await monsterTurn(g, t.left === 0), true);
       if (t.undoAsked) {

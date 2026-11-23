@@ -39,7 +39,7 @@ import { harpKeys, K, Pad, TOUCH, touchAt, touchPick, touchScroll } from '../gam
 import { T } from '../game/tiles.ts';
 import { tileAt } from '../game/world.ts';
 import type { Screen } from './screen.ts';
-import { pathOf, targetsOf, walkToward } from './tacticsView.ts';
+import { tacticalPlan, tacticsView } from './tacticsView.ts';
 import { cancelsTouch } from './touch.ts';
 
 /** The view's squares: eleven a side, sixteen EGA pixels each, from (8, 8). */
@@ -327,8 +327,10 @@ export class DirectTouch {
 
   /** The way to mark now, in view squares: none over a menu, a question or a talk - only at the prompt, or a step. */
   private wayNow(): WayShown | null {
-    const w = this.way;
     const g = this.g;
+    const t = g.tactics;
+    // A tactical turn's cursor, put on a square: the way there, as it would be walked (Fire Emblem's mark).
+    const w = this.way ?? (t.on && t.cursor && t.turn === g.s.combatTurn && !g.s.crosshair ? this.tacticalWay(t.cursor, t.turn) : null);
     if (!w || !g.inPlay) return null;
     const mode = this.mode;
     if (mode !== 'command' && mode !== 'busy') return null;
@@ -399,16 +401,10 @@ export class DirectTouch {
    * to where it is struck from; else the walk itself (walkToward), to the square it ends on.
    */
   private tacticalWay(square: { x: number; y: number }, i: number): Way | null {
-    const g = this.g;
-    const j = combatantAt(g, square.x, square.y);
-    const targets = targetsOf(g, i);
-    if (j >= 0 && onMonsterSide(g, j) && targets.has(j)) {
-      const step = targets.get(j)!;
-      return { frame: 'view', steps: step === null ? [] : pathOf(g, i, step.x, step.y), end: square, kind: 'foe' };
-    }
-    const path = walkToward(g, i, square.x, square.y);
-    if (!path.length) return { frame: 'view', steps: [], end: square, kind: 'none' };
-    return { frame: 'view', steps: path.slice(0, -1), end: path[path.length - 1], kind: 'walk' };
+    const plan = tacticalPlan(this.g, i, square);
+    if (!plan) return { frame: 'view', steps: [], end: square, kind: 'none' };
+    if (plan.kind === 'foe') return { frame: 'view', steps: plan.way, end: square, kind: 'foe' };
+    return { frame: 'view', steps: plan.way.slice(0, -1), end: plan.way[plan.way.length - 1], kind: 'walk' };
   }
 
   /** The way marked for a finger at (x, y) of the screen (EGA pixels), at the command prompt. */
@@ -861,6 +857,7 @@ export class DirectTouch {
     const [dx, dy] = [square.x - c.x, square.y - c.y];
     if (dx === 0 && dy === 0) {
       this.armed = null;
+      if (g.tactics.on && g.tactics.turn === i) tacticsView()?.setCursor(i, null);
       return this.key(Pad.A);
     }
     if (g.tactics.on && g.tactics.turn === i) return this.tacticalTap(square, i);
@@ -888,39 +885,25 @@ export class DirectTouch {
   }
 
   /**
-   * A tap in a tactical turn (game/tactics.ts), whose two actions a tap may spend both of, at once: a foe in reach
-   * struck; a foe within a walk walked to and struck (a move and a blow); any other square walked to - the whole way
-   * where the turn's moves reach it, else as far toward it as they go - each move as far as the member's dexterity
-   * takes them. The finger's mark (tacticalWay) shows which before the finger lifts.
+   * A tap in a tactical turn (game/tactics.ts), as Fire Emblem has it: the first on a square puts the cursor there -
+   * the way to it marked, a foe's odds shown (ui/tacticsView.ts) - and the second on the same square does it, both the
+   * turn's actions at once if need be: a foe in reach struck; one a walk away walked to and struck; any other square
+   * walked to, the whole way where the turn's moves reach it, else as far toward it as they go. (The hotbar's first
+   * button does it too, and B, or a tap on the member, brings the cursor home.)
    */
   private tacticalTap(square: { x: number; y: number }, i: number): void {
     const g = this.g;
-    const c = g.combat[i];
-    const arrow = (from: { x: number; y: number }, to: { x: number; y: number }): number => arrowToward(to.x - from.x, to.y - from.y);
-    const j = combatantAt(g, square.x, square.y);
-    const targets = targetsOf(g, i);
+    const view = tacticsView();
     this.armed = null;
-    // A foe in reach, struck at once; one a walk away, walked to and struck - the finger's mark showed which, and how.
-    if (j >= 0 && onMonsterSide(g, j) && targets.has(j)) {
-      const step = targets.get(j)!;
-      g.bumpFoe = { x: square.x, y: square.y, pointed: true };
-      this.setWay(null);
-      if (step === null) return this.type(0x41);
-      const walk = pathOf(g, i, step.x, step.y);
-      return this.type(...walk.map((p, k) => arrow(k === 0 ? c : walk[k - 1], p)), 0x41);
-    }
-    // A square to walk to: walked to at once, a move at a time - the whole way, if the turn's moves reach it, else as far
-    // as they go toward it.
-    const path = walkToward(g, i, square.x, square.y);
-    this.armed = null;
-    if (path.length) {
-      this.setWay(null);
-      this.type(...path.map((p, k) => arrow(k === 0 ? c : path[k - 1], p)));
+    this.setWay(null);
+    if (!view) return;
+    const cur = g.tactics.cursor;
+    if (!cur || cur.x !== square.x || cur.y !== square.y) {
+      view.setCursor(i, square);
       return;
     }
-    // No way nearer it: marked so, a moment, and nothing walked - as the finger's mark showed.
-    this.setWay({ frame: 'view', steps: [], end: square, kind: 'none' });
-    this.wayLinger();
+    const keys = view.choose(i, square);
+    if (keys) this.type(...keys);
   }
 
   // --- Walking --------------------------------------------------------------------

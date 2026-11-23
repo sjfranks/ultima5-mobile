@@ -12,11 +12,12 @@
  */
 
 import { treasureLies } from '../game/actors.ts';
-import { throwable } from '../game/combat.ts';
+import { onMonsterSide, throwable } from '../game/combat.ts';
 import { planSwitch } from '../game/switchWeapon.ts';
 import { firesHere } from '../game/input.ts';
 import type { Game } from '../game/game.ts';
 import { END_TURN, K, Pad, TOUCH, UNDO_ACTION } from '../game/io.ts';
+import { tacticalPlan } from './tacticsView.ts';
 import { CF } from '../game/game.ts';
 import { buttonLook, toneKey } from './buttonLook.ts';
 import { touchMode } from './directTouch.ts';
@@ -264,6 +265,13 @@ export class TouchBar {
     }
   }
 
+  /** A creature's turn in a tactical fight: the party's buttons, kept, are dimmed and press nothing (read at the press). */
+  private creaturesGo(): boolean {
+    const g = this.g;
+    const t = g.tactics;
+    return t.on && g.inCombat && t.turn >= 0 && onMonsterSide(g, t.turn);
+  }
+
   /** The hotbar's page (tactical turns), and whether it is a member's tactical turn at the prompt now. */
   private page = 0;
   /** Whose turn the page was turned in (the hotbar's: each turn opens on the first). */
@@ -315,9 +323,17 @@ export class TouchBar {
       : null;
     // The pause menu here only where it is not beside the pane already (paneTabs.ts).
     const pause: Button[] = this.placed?.tabs ? [] : [{ label: 'Pause menu', code: Pad.Start, icon: 'menu' }];
+    // The first button: Attack - or, the cursor put on a square (Fire Emblem's), what choosing it does: Attack the foe
+    // there, Move there (A, read by the cursor: ui/tacticsView.ts).
+    const chosen = t.cursor ? tacticalPlan(g, i, t.cursor) : null;
+    const go: Button = !t.cursor
+      ? { label: 'Attack', code: Pad.X, icon: 'sword', main: true, die: 'd30' }
+      : chosen?.kind === 'foe'
+        ? { label: 'Attack there', code: Pad.A, icon: 'sword', main: true, lines: ['Attack'] }
+        : { label: 'Move there', code: Pad.A, main: true, lines: ['Move'], off: !chosen };
     const pages: Button[][] = [
       [
-        { label: 'Attack', code: Pad.X, icon: 'sword', main: true, die: 'd30' },
+        go,
         { label: 'Cast', code: Pad.Y, badge: `x${mixtures}`, off: mixtures === 0 },
         swap,
         ...(toss ? [toss] : [{ label: 'Use', code: 0x55 }]),
@@ -360,6 +376,8 @@ export class TouchBar {
     }
     // While the game works out a turn, the buttons it had stay (no flicker between steps).
     const mode = touchMode(this.g, this.screen);
+    // In a tactical fight, the buttons kept through a creature's turn are dimmed, and press nothing: not the party's go.
+    this.root.style.opacity = mode === 'busy' && this.creaturesGo() ? '0.4' : '';
     if (mode === 'busy' && !this.options.mapShown() && this.shownKey) return;
     const row = this.row();
     const left = this.g.options.hand !== 'right';
@@ -424,6 +442,7 @@ export class TouchBar {
     el.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (this.creaturesGo()) return;
       lit(true);
       if (b.local) {
         b.local();
@@ -440,7 +459,8 @@ export class TouchBar {
       this.options.onPress();
       // A command's letter (Use, Ready, Ztats, Switch) typed as a tap types it (io.ts TOUCH): as a key, the controller
       // input reads letters as the pad - W a step north, the rest nothing.
-      if (b.code >= 0x41 && b.code <= 0x5a && this.tacticalTurn()) {
+      // So too Pass (Space): read as the controller's B, it would be the cursor's Back (ui/tacticsView.ts).
+      if (((b.code >= 0x41 && b.code <= 0x5a) || b.code === K.Space) && this.tacticalTurn()) {
         this.g.touchKeys = [b.code];
         this.options.send(TOUCH);
       } else this.options.send(b.code);

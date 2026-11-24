@@ -163,6 +163,16 @@ export class TacticsView {
       // off the field from the member's own square on its edge: the step itself, out of the fight (1988's way to flee)
       const [ox, oy] = [cur.x + d[0], cur.y + d[1]];
       if (home && (ox < 0 || oy < 0 || ox > 10 || oy > 10) && k <= 0xff && !(k >= 0xd3 && k <= 0xd6)) return k;
+      // off the field from an edge square the cursor is on: walked to, and the step off it, where the turn has them
+      if ((ox < 0 || oy < 0 || ox > 10 || oy > 10) && k <= 0xff) {
+        const out = fleePlan(g, i, cur, k);
+        if (out) {
+          t.cursor = null;
+          this.screen.fb.dirty = true;
+          queueKeys(...out);
+          return 0;
+        }
+      }
       const x = Math.max(0, Math.min(10, ox));
       const y = Math.max(0, Math.min(10, oy));
       this.setCursor(i, { x, y });
@@ -974,6 +984,44 @@ export function tacticalPlan(
   const path = walkToward(g, i, square.x, square.y);
   if (!path.length) return null;
   return { keys: arrows(path), foe: null, way: path, kind: 'walk' };
+}
+
+/** The way off the field from (x, y) on its edge, as the arrow that takes it: none where it is not on the edge. */
+function outward(x: number, y: number): number[] {
+  const ways: number[] = [];
+  if (x === 0) ways.push(K.Left);
+  if (x === 10) ways.push(K.Right);
+  if (y === 0) ways.push(K.Up);
+  if (y === 10) ways.push(K.Down);
+  return ways;
+}
+
+/**
+ * Fleeing (1988's: a member steps off the field's edge): the keys that walk member `i` to `square` on the edge (its own
+ * square, where it stands there) and step off it - by the arrow `dir`, or the way out from there; null where the
+ * turn's actions do not reach, the square is not on the edge, or the party may not go that way (a ship's deck, or
+ * another exit than the party's first).
+ */
+export function fleePlan(g: Game, i: number, square?: { x: number; y: number } | null, dir?: number): number[] | null {
+  const c = g.combat[i];
+  const s = g.s;
+  if (!c || (s.partyTile & 0xf8) === 0x20) return null;
+  const at = square ?? c;
+  let ways = outward(at.x, at.y);
+  if (dir !== undefined) ways = ways.filter((k) => k === dir);
+  if (s.exitDir !== 0 && s.combatFlags & 0x80) ways = ways.filter((k) => k === s.exitDir);
+  else if (s.exitDir !== 0 && ways.includes(s.exitDir)) ways = [s.exitDir];
+  if (!ways.length) return null;
+  let walk: number[] = [];
+  if (at.x !== c.x || at.y !== c.y) {
+    const plan = tacticalPlan(g, i, at);
+    const end = plan?.way[plan.way.length - 1];
+    if (!plan || plan.kind !== 'walk' || !end || end.x !== at.x || end.y !== at.y) return null;
+    walk = plan.keys;
+  }
+  const t = g.tactics;
+  if (walkCost(g, i, walk.length + 1) > t.left) return null;
+  return [...walk, ways[0]];
 }
 
 /**

@@ -175,8 +175,8 @@ export const TACTICAL_TIP = {
   id: 'tactical-cursor',
   pad: 'Tip: D-pad moves the cursor. A: move or attack there. B: back. LB/RB: next foe.',
   keys: 'Tip: WASD moves the cursor. Z: move or attack there. X: back. [ ]: next foe.',
-  classic: 'Tip: Arrows move the cursor. Enter: move or attack there. Esc: back.',
-  touch: 'Tip: Tap a square to aim, then tap it again to go.',
+  classic: 'Tip: Arrows move the cursor. Enter: move or attack there. Esc: back. Off the edge: flee.',
+  touch: 'Tip: Tap a square to aim, then tap it again to go. On the edge: Flee.',
 };
 
 /** The fight's tip, given now (combat.ts playerTurn), worded for what the player last pressed; null, none. */

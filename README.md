@@ -2,9 +2,9 @@
 
 ![Ultima V: Warriors of Destiny, 1988 to 2026 - the Avatar standing over his fallen friend, three Shadowlords looming over them, from the box's painting](docs/banner.png)
 
-*A new engine for the 1988 MS-DOS game, in TypeScript, for the browser,
+_A new engine for the 1988 MS-DOS game, in TypeScript, for the browser,
 the desktop, the Steam Deck and Android. Like OpenMW for Morrowind, it
-ships none of the PC game: it plays your own copy.*
+ships none of the PC game: it plays your own copy._
 
 **Play it:** <https://synthwave-pixel.github.io/ultima5/>
 
@@ -150,6 +150,7 @@ games.
 
   The same link works on any Linux desktop with Flatpak, and the
   terminal line below installs per user with no password at all.
+
 - **Windows and macOS**: the installers on the
   [Releases page](https://github.com/synthwave-pixel/ultima5/releases/latest),
   a Windows installer or portable `.exe` and an Apple Silicon `.dmg`
@@ -178,7 +179,7 @@ games.
   Obtainium by hand. iOS has no app on purpose: use the browser.
 - **Linux without Flatpak**: the `AppImage` on the Releases page. Make it
   executable and run it; it keeps itself up to date. On Ubuntu 22.04 or
-  newer (and Mint, Pop!_OS...), if it won't start, install libfuse2 first:
+  newer (and Mint, Pop!\_OS...), if it won't start, install libfuse2 first:
   `sudo apt install libfuse2t64` (`libfuse2` before Ubuntu 24.04).
 
 ### Installing from a terminal
@@ -253,16 +254,16 @@ lays them (Z is A, X is B):
 
 ![The controller, as the in-game Help shows it](docs/controller.png)
 
-| Controller | Keyboard | What it does |
-|---|---|---|
-| D-pad, left stick | Arrows, W A S D | Walk; move through a menu (left and right turn a page in a long list) |
-| Right stick | | In a dungeon, turn left or right where you stand |
-| A | Enter, Z (Tab at the prompt) | Open the menu of what you can do here; choose |
-| B | Space, X, B (Escape in a menu) | Back out; at the prompt, pass a turn; leave a won fight |
-| X | Q, C, / | Attack: in a fight a snap attack on the foe marked (Fire aboard a ship or beside a cannon) |
-| LB, RB | [ and ] | In a fight, the next foe to snap at; at an aim, the next target |
-| Y | E, V, Y, . (full stop) | Cast; in the Journal, a hint; on a world map, back to the party |
-| Start, Select | Escape at the prompt | Pause menu |
+| Controller        | Keyboard                       | What it does                                                                               |
+| ----------------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
+| D-pad, left stick | Arrows, W A S D                | Walk; move through a menu (left and right turn a page in a long list)                      |
+| Right stick       |                                | In a dungeon, turn left or right where you stand                                           |
+| A                 | Enter, Z (Tab at the prompt)   | Open the menu of what you can do here; choose                                              |
+| B                 | Space, X, B (Escape in a menu) | Back out; at the prompt, pass a turn; leave a won fight                                    |
+| X                 | Q, C, /                        | Attack: in a fight a snap attack on the foe marked (Fire aboard a ship or beside a cannon) |
+| LB, RB            | [ and ]                        | In a fight, the next foe to snap at; at an aim, the next target                            |
+| Y                 | E, V, Y, . (full stop)         | Cast; in the Journal, a hint; on a world map, back to the party                            |
+| Start, Select     | Escape at the prompt           | Pause menu                                                                                 |
 
 **Y for a hint, and home on the map.** In the Journal, Y gives a hint for
 the line the bar is on: where a shrine, dungeon or Flame is and who knows
@@ -318,10 +319,10 @@ reverse-engineered source of the DOS game,
 fixes. Everything new is optional. [What is new, in full](docs/features.md)
 has the whole list; the highlights:
 
-- **Two looks.** *Modern* (the default) redraws the screen at four times
-  the EGA's size, with three sets of tiles: *Modern PC* (1988's own art,
-  taken from your files, cleaned up and toned), *Apple ][* and *PC EGA*
-  (1988's tiles exactly). *PC (1988)* is the 1988
+- **Two looks.** _Modern_ (the default) redraws the screen at four times
+  the EGA's size, with three sets of tiles: _Modern PC_ (1988's own art,
+  taken from your files, cleaned up and toned), _Apple ][_ and _PC EGA_
+  (1988's tiles exactly). _PC (1988)_ is the 1988
   screen as it was, with its own tiles or the Apple ][ set. The
   Ultima V Upgrade's music plays where the Upgrade played it, and one
   Sound setting chooses it with its effects: Classical, Electronic or
@@ -400,8 +401,11 @@ sleep, charm, fields.
 - **Controls are Fire Emblem's**: a cursor (the base game's walk mark)
   moved by the pad, the arrows or WASD; a square or foe chosen once to
   see the plan and its forecast (Hit %, damage, the chance it fells),
-  again to do it. By touch, a tap marks and a second tap acts. An arrow
-  off the field's edge from the member flees.
+  again to do it. By touch, a tap marks and a second tap acts.
+- **Fleeing is 1988's step off the edge**: with the cursor on an edge
+  square the turn reaches (or the member's own), an arrow outward walks
+  there and steps off; by touch, the hotbar's **Flee** (or Flee there)
+  does it.
 - **The dice** are thrown in a tray as the rules roll them - blue for the
   party, red for the creatures - blank while rolling, the score shown once
   they land, with HIT!/MISS! and the damage. Gameplay, **Dice**: Normal,

@@ -17,7 +17,7 @@ import { planSwitch } from '../game/switchWeapon.ts';
 import { firesHere } from '../game/input.ts';
 import type { Game } from '../game/game.ts';
 import { END_TURN, K, Pad, TOUCH, UNDO_ACTION } from '../game/io.ts';
-import { tacticalPlan } from './tacticsView.ts';
+import { fleePlan, tacticalPlan } from './tacticsView.ts';
 import { CF } from '../game/game.ts';
 import { buttonLook, toneKey } from './buttonLook.ts';
 import { touchMode } from './directTouch.ts';
@@ -331,17 +331,36 @@ export class TouchBar {
       : chosen?.kind === 'foe'
         ? { label: 'Attack there', code: Pad.A, icon: 'sword', main: true, lines: ['Attack'] }
         : { label: 'Move there', code: Pad.A, main: true, lines: ['Move'], off: !chosen };
+    // Flee (1988's step off the field's edge): where the member stands on the edge, or the cursor is on an edge
+    // square the turn reaches - walked to, and stepped off. It takes Use's (or Throw's) place, put on the next page.
+    const out = fleePlan(g, i, t.cursor);
+    const flee: Button | null = out
+      ? {
+          label: t.cursor && (t.cursor.x !== g.combat[i].x || t.cursor.y !== g.combat[i].y) ? 'Flee there' : 'Flee',
+          code: -1,
+          lines: ['Flee'],
+          local: () => {
+            this.options.onPress();
+            t.cursor = null;
+            this.g.touchKeys = out;
+            this.options.send(TOUCH);
+            setTimeout(() => this.update(), 30);
+          },
+        }
+      : null;
+    const fourth: Button[] = toss ? [toss] : [{ label: 'Use', code: 0x55 }];
     const pages: Button[][] = [
       [
         go,
         { label: 'Cast', code: Pad.Y, badge: `x${mixtures}`, off: mixtures === 0 },
         swap,
-        ...(toss ? [toss] : [{ label: 'Use', code: 0x55 }]),
+        ...(flee ? [flee] : fourth),
         { label: 'Undo', code: UNDO_ACTION, icon: 'back', off: !t.history.length },
       ],
       [
         { label: 'Act', code: Pad.A },
-        ...(toss ? [{ label: 'Use', code: 0x55 }] : []),
+        ...(flee ? fourth : []),
+        ...(toss && !flee ? [{ label: 'Use', code: 0x55 }] : []),
         { label: 'Pass', code: K.Space },
         { label: 'Ready', code: 0x52 },
         { label: 'Ztats', code: 0x5a },

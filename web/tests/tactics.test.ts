@@ -131,6 +131,37 @@ describe('tactical turns', () => {
     expect(thrown).toBe(0);
   });
 
+  it('flees off the edge: from the edge square, or walked to one and stepped off it in the same turn', async () => {
+    const { g, p } = await outside(5);
+    ratBeside(g);
+    const { fleePlan } = await import('../src/ui/tacticsView.ts');
+    const queue: number[] = [];
+    const plans: (number[] | null)[] = [];
+    let n = 0;
+    p.next = () => {
+      if (++n > 400) throw new Error('ran out');
+      if (queue.length) return queue.shift()!;
+      const i = g.s.combatTurn;
+      if (g.commandPrompt !== 'combat' || g.s.crosshair || i >= 6) return 0x20;
+      const c = g.combat[i];
+      // a square in from the west edge: nothing from where it stands, the edge square beside walked to and left
+      if (g.tactics.left === 2) g.s.actors[c.actor].x = c.x = 1;
+      expect(fleePlan(g, i)).toBeNull();
+      const plan = combatantAt(g, 0, c.y) < 0 ? fleePlan(g, i, { x: 0, y: c.y }) : null;
+      plans.push(plan);
+      if (!plan) return 0x20;
+      queue.push(...plan.slice(1));
+      return plan[0];
+    };
+    await attackCombat(g, 1).catch((e: Error) => {
+      if (!e.message.includes('ran out')) throw e;
+    });
+    expect(plans.filter(Boolean)).toContainEqual([K.Left, K.Left]);
+    expect(p.log.match(/Escape!/g)?.length).toBe(plans.filter(Boolean).length);
+    // nor a square in the field's middle
+    expect(fleePlan(g, 0, { x: 5, y: 5 })).toBeNull();
+  });
+
   it('takes back a step, a blow and a turn gone by: Undo goes back through the fight', async () => {
     const { g, p } = await outside(5);
     ratBeside(g);
